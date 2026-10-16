@@ -1,0 +1,35 @@
+@if (TotalPages > 1 || HasPrevious || HasNext)
+{
+    <nav class="rn-pager" aria-label="Pagination">
+        <span>
+            @if (TotalCount is { } total)
+            {
+                @("Page " + Page.ToString("N0") + " of " + Math.Max(1, TotalPages).ToString("N0") + " · " + total.ToString("N0") + " " + ItemName)
+            }
+            else
+            {
+                @("Page " + Page.ToString("N0"))
+            }
+        </span>
+        <div class="rn-pager-buttons">
+            <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" disabled="@(!HasPrevious)" @onclick="() => OnPageChanged.InvokeAsync(Page - 1)">
+                <Icon Name="chevron-left" /> Previous
+            </button>
+            <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" disabled="@(!HasNext)" @onclick="() => OnPageChanged.InvokeAsync(Page + 1)">
+                Next <Icon Name="chevron-right" />
+            </button>
+        </div>
+    </nav>
+}
+
+@code {
+    [Parameter] public int Page { get; set; } = 1;
+    [Parameter] public int TotalPages { get; set; }
+    [Parameter] public int? TotalCount { get; set; }
+    [Parameter] public bool? HasMore { get; set; }
+    [Parameter] public string ItemName { get; set; } = "items";
+    [Parameter] public EventCallback<int> OnPageChanged { get; set; }
+
+    private bool HasPrevious => Page > 1;
+    private bool HasNext => HasMore ?? Page < TotalPages;
+}

@@ -1,0 +1,277 @@
+@page "/collection"
+@attribute [Authorize]
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Library
+@inject CollectionService Collection
+@inject LibraryService Library
+
+<AppTitle Text="Collection & loans" />
+
+<PageHeader Title="Collection &amp; loans" Description="The copies you own, their formats and condition, and who has borrowed them." />
+
+@if (_summary is not null)
+{
+    <div class="rn-stats mb-4">
+        <StatCard Label="Books owned" Value="@_summary.OwnedBooks.ToString("N0")" IconName="archive"
+                  Hint="@($"{_summary.Physical} physical · {_summary.EBooks} e-book · {_summary.Audiobooks} audio")" />
+        <StatCard Label="Lent out" Value="@_summary.OnLoan.ToString("N0")" IconName="handshake" Hint="@(_summary.Overdue > 0 ? _summary.Overdue + " overdue" : "None overdue")" />
+        <StatCard Label="Borrowed from others" Value="@_summary.BorrowedFromOthers.ToString("N0")" IconName="bookmark" />
+        <StatCard Label="Recorded spend" Value="@_summary.TotalSpent.ToString("N2")" IconName="file" Hint="Sum of purchase prices you entered" />
+    </div>
+}
+
+<nav class="rn-tabs" aria-label="Collection views">
+    <button type="button" class="rn-tab @(_tab == "owned" ? "active" : null)" aria-pressed="@(_tab == "owned" ? "true" : "false")" @onclick="@(() => SwitchTab("owned"))">Owned books</button>
+    <button type="button" class="rn-tab @(_tab == "loans" ? "active" : null)" aria-pressed="@(_tab == "loans" ? "true" : "false")" @onclick="@(() => SwitchTab("loans"))">Loans <span class="rn-count">@_summary?.OnLoan</span></button>
+</nav>
+
+@if (_error is not null)
+{
+    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+}
+else if (_tab == "owned")
+{
+    <form class="rn-toolbar" @onsubmit="SearchAsync">
+        <div class="rn-field rn-grow">
+            <label class="rn-label" for="col-search">Search owned books</label>
+            <input id="col-search" class="rn-input" type="search" maxlength="200" @bind="_search" />
+        </div>
+        <div class="rn-field">
+            <label class="rn-label" for="col-format">Format</label>
+            <select id="col-format" class="rn-select" @bind="_format">
+                <option value="">All formats</option>
+                @foreach (var format in Enum.GetValues<BookFormat>())
+                {
+                    <option value="@format">@format.ToDisplayName()</option>
+                }
+            </select>
+        </div>
+        <div class="rn-field">
+            <label class="rn-label" for="col-loan">Availability</label>
+            <select id="col-loan" class="rn-select" @bind="_loanFilter">
+                <option value="@LoanFilter.All">All</option>
+                <option value="@LoanFilter.Available">On the shelf</option>
+                <option value="@LoanFilter.OnLoan">Lent out</option>
+            </select>
+        </div>
+        <button type="submit" class="rn-btn rn-btn-primary">Apply</button>
+    </form>
+
+    @if (_items is null)
+    {
+        <LoadingIndicator />
+    }
+    else if (_items.TotalCount == 0)
+    {
+        <EmptyState Title="No owned books recorded" IconName="archive"
+                    Text="Open a book in your library and set “Your copy” to Owned to catalogue it here. You can then record format, condition and loans." />
+    }
+    else
+    {
+        <div class="rn-card tight rn-table-wrap">
+            <table class="rn-table">
+                <thead><tr><th scope="col">Book</th><th scope="col">Format</th><th scope="col">Acquired</th><th scope="col">Condition</th><th scope="col">Loan</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                    @foreach (var item in _items.Items)
+                    {
+                        <tr @key="item.EntryId">
+                            <td>
+                                <div class="rn-flex">
+                                    <BookCover Title="@item.Title" Url="@item.CoverUrl" Size="xs" />
+                                    <div style="min-width:0">
+                                        <a class="rn-list-title" href="@("books/" + item.BookId)">@item.Title</a>
+                                        <div class="rn-subtle rn-truncate">@string.Join(", ", item.Authors)</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>@(item.Format?.ToDisplayName() ?? "Physical")</td>
+                            <td class="rn-subtle">@(item.AcquiredOn?.ToString("d MMM yyyy") ?? "—")@(item.PurchasePrice is { } price ? " · " + price.ToString("N2") : "")</td>
+                            <td class="rn-subtle">@(item.ConditionNotes ?? "—")</td>
+                            <td>
+                                @if (item.OutstandingLoan is { } loan)
+                                {
+                                    <span class="@(loan.IsOverdue ? "rn-error-text" : null)">
+                                        With <strong>@loan.BorrowerName</strong>@(loan.DueOn is { } due ? ", due " + due.ToString("d MMM") : "")@(loan.IsOverdue ? " (overdue)" : "")
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="rn-subtle">On the shelf</span>
+                                }
+                            </td>
+                            <td>
+                                @if (item.OutstandingLoan is { } outstanding)
+                                {
+                                    <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" disabled="@IsBusy" @onclick="() => ReturnAsync(outstanding)">Mark returned</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm" @onclick="() => OpenLend(item)">Lend</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <Pager Page="_items.Page" TotalPages="_items.TotalPages" TotalCount="_items.TotalCount" ItemName="books" OnPageChanged="LoadPageAsync" />
+    }
+}
+else
+{
+    @if (_loans is null)
+    {
+        <LoadingIndicator />
+    }
+    else if (_loans.Count == 0)
+    {
+        <EmptyState Title="No loans recorded" IconName="handshake" Text="When you lend an owned book, it will be tracked here until it comes back." />
+    }
+    else
+    {
+        <div class="rn-card tight">
+            <div class="rn-list">
+                @foreach (var loan in _loans)
+                {
+                    <div class="rn-list-item" @key="loan.Id">
+                        <div class="rn-list-body">
+                            <a class="rn-list-title" href="@("books/" + loan.BookId)">@loan.BookTitle</a>
+                            <div class="rn-subtle">
+                                @loan.BorrowerName · lent @loan.LoanedOn.ToString("d MMM yyyy")
+                                @if (loan.ReturnedOn is { } returned)
+                                {
+                                    <span> · returned @returned.ToString("d MMM yyyy")</span>
+                                }
+                                else if (loan.DueOn is { } due)
+                                {
+                                    <span class="@(loan.IsOverdue ? "rn-error-text" : null)"> · due @due.ToString("d MMM yyyy")@(loan.IsOverdue ? " (overdue)" : "")</span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrEmpty(loan.Notes))
+                            {
+                                <div class="rn-muted pre-wrap">@loan.Notes</div>
+                            }
+                        </div>
+                        <div class="rn-flex">
+                            @if (loan.ReturnedOn is null)
+                            {
+                                <span class="rn-status rn-status-Paused">Outstanding</span>
+                                <button type="button" class="rn-btn rn-btn-primary rn-btn-sm" disabled="@IsBusy" @onclick="() => ReturnAsync(loan)">Mark returned</button>
+                            }
+                            else
+                            {
+                                <span class="rn-status rn-status-Read">Returned</span>
+                            }
+                            <button type="button" class="rn-btn rn-btn-danger-ghost rn-btn-icon" aria-label="Delete loan record" @onclick="() => DeleteLoanAsync(loan)"><Icon Name="trash" /></button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+
+<Modal Title="@("Lend “" + (_lendTitle ?? "") + "”")" @bind-Open="_lendOpen">
+    <LoanFields Model="_loanForm" OnValidSubmit="LendAsync" OnCancel="() => _lendOpen = false" Busy="IsBusy" />
+</Modal>
+
+<ConfirmDialog @ref="_confirm" />
+
+@code {
+    private Guid _userId;
+    private string _tab = "owned";
+    private CollectionSummaryDto? _summary;
+    private PagedResult<CollectionItemDto>? _items;
+    private IReadOnlyList<LoanDto>? _loans;
+    private string? _error;
+    private string _search = "";
+    private BookFormat? _format;
+    private LoanFilter _loanFilter;
+    private int _page = 1;
+    private bool _lendOpen;
+    private Guid? _lendEntryId;
+    private string? _lendTitle;
+    private LoanFormModel _loanForm = new();
+    private ConfirmDialog _confirm = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = await RequireUserIdAsync();
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _error = await LoadAsync(async () =>
+        {
+            _summary = await Collection.GetSummaryAsync(_userId, ComponentToken);
+            if (_tab == "owned")
+            {
+                _items = await Collection.GetCollectionAsync(_userId, new CollectionQuery(_search, _format, _loanFilter, _page), ComponentToken);
+            }
+            else
+            {
+                _loans = await Collection.GetLoansAsync(_userId, outstandingOnly: false, entryId: null, ComponentToken);
+            }
+        });
+    }
+
+    private async Task SwitchTab(string tab)
+    {
+        _tab = tab;
+        await RefreshAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _page = 1;
+        await RefreshAsync();
+    }
+
+    private async Task LoadPageAsync(int page)
+    {
+        _page = page;
+        await RefreshAsync();
+    }
+
+    private async Task OpenLend(CollectionItemDto item)
+    {
+        _lendEntryId = item.EntryId;
+        _lendTitle = item.Title;
+        _loanForm = new LoanFormModel { LoanedOn = await Library.GetTodayAsync(_userId, ComponentToken) };
+        _lendOpen = true;
+    }
+
+    private async Task LendAsync()
+    {
+        if (_lendEntryId is not { } entryId)
+        {
+            return;
+        }
+
+        var request = new LoanRequest(_loanForm.BorrowerName, _loanForm.LoanedOn, _loanForm.DueOn, _loanForm.Notes);
+        if (await RunAsync(() => Collection.LendAsync(_userId, entryId, request, ComponentToken), $"Lent to {_loanForm.BorrowerName}."))
+        {
+            _lendOpen = false;
+            await RefreshAsync();
+        }
+    }
+
+    private async Task ReturnAsync(LoanDto loan)
+    {
+        if (await RunAsync(() => Collection.ReturnAsync(_userId, loan.Id, null, ComponentToken), "Marked as returned."))
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private async Task DeleteLoanAsync(LoanDto loan)
+    {
+        if (await _confirm.ConfirmAsync("Delete this loan record?", "Use this only to correct a mistake — returned loans are kept as lending history.", "Delete record")
+            && await RunAsync(() => Collection.DeleteLoanAsync(_userId, loan.Id, ComponentToken), "Loan record deleted."))
+        {
+            await RefreshAsync();
+        }
+    }
+}

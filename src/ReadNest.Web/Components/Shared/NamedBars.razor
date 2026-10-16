@@ -1,0 +1,20 @@
+@* Horizontal bars for ranked names (genres, authors). *@
+@if (Items.Count > 0)
+{
+    var max = Math.Max(1, Items.Max(i => i.Count));
+    <ul class="list-unstyled rn-mb-0" aria-label="@Label">
+        @foreach (var item in Items)
+        {
+            <li class="rn-hbar">
+                <span class="rn-hbar-name" title="@item.Name">@item.Name</span>
+                <span class="rn-hbar-track" aria-hidden="true"><span style="width:@((item.Count * 100.0 / max).ToString("0.#", CultureInfo.InvariantCulture))%"></span></span>
+                <span class="rn-subtle">@item.Count</span>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<NamedCountDto> Items { get; set; } = [];
+    [Parameter] public string Label { get; set; } = "Ranking";
+}

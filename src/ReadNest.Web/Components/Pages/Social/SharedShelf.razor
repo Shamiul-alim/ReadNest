@@ -1,0 +1,62 @@
+@page "/s/{Slug}"
+@using ReadNest.Application.Library
+@inject ShelfService Shelves
+
+@* Public, read-only page rendered on the server (no interactivity needed). *@
+<AppTitle Text="@(_shelf?.Name ?? "Shared shelf")" />
+
+@if (_shelf is null)
+{
+    <EmptyState Title="This shelf isn't available" IconName="layers" Text="The link may be wrong, or the owner has made the shelf private.">
+        <a class="rn-btn rn-btn-secondary" href="explore">Explore books</a>
+    </EmptyState>
+}
+else
+{
+    <PageHeader Title="@_shelf.Name" Description="@_shelf.Description">
+        <Breadcrumbs>
+            <span>A shared shelf by
+                @if (_shelf.OwnerHandle is not null)
+                {
+                    <a href="@("u/" + _shelf.OwnerHandle)">@_shelf.OwnerName</a>
+                }
+                else
+                {
+                    @_shelf.OwnerName
+                }
+            </span>
+        </Breadcrumbs>
+    </PageHeader>
+    @if (_shelf.Books.Count == 0)
+    {
+        <p class="rn-subtle">This shelf is empty.</p>
+    }
+    else
+    {
+        <p class="rn-subtle">@_shelf.Books.Count book@(_shelf.Books.Count == 1 ? "" : "s") · updated @_shelf.UpdatedAtUtc.ToString("d MMM yyyy")</p>
+        <div class="rn-book-grid">
+            @foreach (var book in _shelf.Books)
+            {
+                <PublicBookCard Book="@(new ReadNest.Application.Social.PublicBookDto(book.BookId, book.Title, book.Authors, book.CoverUrl, book.Status, book.Rating, book.IsCatalogBook))" ShowStatus="true" />
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = "";
+
+    private SharedShelfDto? _shelf;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _shelf = await Shelves.GetSharedAsync(Slug, CancellationToken.None);
+        }
+        catch (NotFoundException)
+        {
+            _shelf = null;
+        }
+    }
+}

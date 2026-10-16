@@ -1,0 +1,283 @@
+@page "/books/{BookId:guid}"
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Books
+@using ReadNest.Application.Library
+@using ReadNest.Application.Reviews
+@using ReadNest.Web.Components.Book
+@inject BookService Books
+@inject LibraryService Library
+@inject ReviewService Reviews
+
+<AppTitle Text="@(_book?.Title ?? "Book")" />
+
+@if (_loading)
+{
+    <LoadingIndicator Text="Loading book…" />
+}
+else if (_error is not null)
+{
+    <PageHeader Title="Book unavailable" />
+    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+}
+else if (_book is not null)
+{
+    <nav class="rn-breadcrumb" aria-label="Breadcrumb">
+        @if (_entry is not null)
+        {
+            <a href="library">My Library</a>
+        }
+        else
+        {
+            <a href="explore">Explore</a>
+        }
+        <Icon Name="chevron-right" /> <span class="rn-truncate">@_book.Title</span>
+    </nav>
+
+    <section class="rn-book-hero">
+        <BookCover Title="@_book.Title" Author="@(_book.Authors.Count > 0 ? _book.Authors[0] : null)" Url="@_book.CoverUrl" Size="lg" Decorative="false" />
+        <div>
+            <h1 tabindex="-1">@_book.Title</h1>
+            @if (_book.Subtitle is not null)
+            {
+                <div class="rn-subtitle">@_book.Subtitle</div>
+            }
+            <p class="rn-muted">
+                @if (_book.Authors.Count == 0)
+                {
+                    <span>Author unknown</span>
+                }
+                else
+                {
+                    <span>by </span>
+                    @for (var i = 0; i < _book.Authors.Count; i++)
+                    {
+                        var author = _book.Authors[i];
+                        <a href="@("explore?field=Author&q=" + Uri.EscapeDataString(author))">@author</a>@(i < _book.Authors.Count - 1 ? ", " : "")
+                    }
+                }
+            </p>
+
+            <div class="rn-flex rn-flex-wrap mb-3">
+                @if (_entry is not null)
+                {
+                    <StatusBadge Status="_entry.Status" />
+                    <Stars Value="_entry.Rating" />
+                    @if (_entry.IsFavorite)
+                    {
+                        <span class="rn-chip"><Icon Name="heart" /> Favourite</span>
+                    }
+                }
+                @if (_book.Origin == BookOrigin.Manual)
+                {
+                    <span class="rn-chip" title="Only you can see this record"><Icon Name="lock" /> Private book record</span>
+                }
+            </div>
+
+            @if (_book.Genres.Count > 0)
+            {
+                <div class="rn-chips mb-3">
+                    @foreach (var genre in _book.Genres)
+                    {
+                        <a class="rn-chip" href="@("explore?field=Subject&q=" + Uri.EscapeDataString(genre))">@genre</a>
+                    }
+                </div>
+            }
+
+            @if (_userId is null)
+            {
+                <a class="rn-btn rn-btn-primary" href="@("Account/Login?returnUrl=" + Uri.EscapeDataString("books/" + BookId))">Log in to add this book</a>
+            }
+            else if (_entry is null)
+            {
+                <div class="rn-card tight rn-flex rn-flex-wrap">
+                    <label class="rn-label" for="add-status">Add to my library as</label>
+                    <select id="add-status" class="rn-select" style="width:auto" @bind="_addStatus">
+                        @foreach (var status in Enum.GetValues<ReadingStatus>())
+                        {
+                            <option value="@status">@status.ToDisplayName()</option>
+                        }
+                    </select>
+                    <button type="button" class="rn-btn rn-btn-primary" disabled="@IsBusy" @onclick="AddAsync"><Icon Name="plus" /> Add to library</button>
+                </div>
+            }
+
+            <dl class="rn-facts">
+                <div class="rn-fact"><dt>Published</dt><dd>@(_book.PublishedDate ?? "Unknown")</dd></div>
+                <div class="rn-fact"><dt>Publisher</dt><dd>@(_book.Publisher ?? "Unknown")</dd></div>
+                <div class="rn-fact"><dt>Pages</dt><dd>@(_book.PageCount?.ToString("N0") ?? "Unknown")</dd></div>
+                <div class="rn-fact"><dt>Language</dt><dd>@(_book.LanguageCode?.ToUpperInvariant() ?? "Unknown")</dd></div>
+                <div class="rn-fact"><dt>ISBN-13</dt><dd class="rn-mono">@(_book.Isbn13 ?? "—")</dd></div>
+                <div class="rn-fact"><dt>ISBN-10</dt><dd class="rn-mono">@(_book.Isbn10 ?? "—")</dd></div>
+            </dl>
+
+            @if (!string.IsNullOrWhiteSpace(_book.Description))
+            {
+                <div class="rn-description pre-wrap @(_expanded || _book.Description.Length < 700 ? null : "clamped")">@_book.Description</div>
+                @if (_book.Description.Length >= 700)
+                {
+                    <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm mt-1" aria-expanded="@(_expanded ? "true" : "false")" @onclick="() => _expanded = !_expanded">
+                        @(_expanded ? "Show less" : "Show more")
+                    </button>
+                }
+            }
+            else
+            {
+                <p class="rn-subtle">No description is available for this book.</p>
+            }
+
+            @if (_book.ExternalLinks.Count > 0)
+            {
+                <p class="mt-3 rn-subtle">
+                    Source:
+                    @foreach (var link in _book.ExternalLinks)
+                    {
+                        <a class="me-2" href="@link.Url" target="_blank" rel="noopener noreferrer nofollow">@link.Provider.ToDisplayName() <Icon Name="external" /></a>
+                    }
+                </p>
+            }
+        </div>
+    </section>
+
+    @if (_entry is not null && _userId is { } userId)
+    {
+        <div class="rn-split rn-section">
+            <div>
+                <ReadingPanel UserId="userId" Entry="_entry" OnChanged="ReloadEntryAsync" OnRemoved="OnRemovedAsync" />
+                <SessionsPanel UserId="userId" Entry="_entry" OnChanged="ReloadEntryAsync" />
+                <NotesPanel UserId="userId" Entry="_entry" OnChanged="ReloadEntryAsync" />
+            </div>
+            <div>
+                <ReviewPanel UserId="userId" Entry="_entry" OnChanged="ReloadEntryAsync" />
+                <ShelvesPanel UserId="userId" Entry="_entry" OnChanged="ReloadEntryAsync" />
+                <OwnershipPanel UserId="userId" Entry="_entry" OnChanged="ReloadEntryAsync" />
+            </div>
+        </div>
+    }
+
+    @if (_reviews is { Items.Count: > 0 })
+    {
+        <section class="rn-section">
+            <div class="rn-section-header"><h2>Reader reviews</h2></div>
+            <div class="rn-stack">
+                @foreach (var review in _reviews.Items)
+                {
+                    <article class="rn-card tight">
+                        <div class="rn-flex rn-flex-wrap mb-2">
+                            <Avatar Name="@review.ReviewerName" />
+                            @if (review.ReviewerHandle is not null)
+                            {
+                                <a href="@("u/" + review.ReviewerHandle)"><strong>@review.ReviewerName</strong></a>
+                            }
+                            else
+                            {
+                                <strong>@review.ReviewerName</strong>
+                            }
+                            <Stars Value="review.Rating" />
+                            <span class="rn-subtle ms-auto">@review.UpdatedAtUtc.ToString("d MMM yyyy")</span>
+                        </div>
+                        <div class="pre-wrap">@review.Review</div>
+                    </article>
+                }
+            </div>
+            <Pager Page="_reviews.Page" TotalPages="_reviews.TotalPages" TotalCount="_reviews.TotalCount" ItemName="reviews" OnPageChanged="LoadReviewsAsync" />
+        </section>
+    }
+
+    @if (_related.Count > 0)
+    {
+        <section class="rn-section">
+            <div class="rn-section-header"><h2>Related books</h2><span class="rn-subtle">Same author or genre</span></div>
+            <div class="rn-book-grid">
+                @foreach (var related in _related)
+                {
+                    <article class="rn-book-card">
+                        <a class="rn-book-card-link" href="@("books/" + related.Id)">
+                            <BookCover Title="@related.Title" Author="@(related.Authors.Count > 0 ? related.Authors[0] : null)" Url="@related.CoverUrl" Size="fill" />
+                            <span class="rn-book-title">@related.Title</span>
+                        </a>
+                        <span class="rn-book-author">@string.Join(", ", related.Authors)</span>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+}
+
+@code {
+    [Parameter] public Guid BookId { get; set; }
+
+    private Guid? _userId;
+    private BookDetailsDto? _book;
+    private LibraryEntryDetailsDto? _entry;
+    private IReadOnlyList<BookSummaryDto> _related = [];
+    private PagedResult<PublicReviewDto>? _reviews;
+    private bool _loading = true;
+    private bool _expanded;
+    private string? _error;
+    private ReadingStatus _addStatus = ReadingStatus.WantToRead;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _userId = await GetUserIdAsync();
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _loading = true;
+        _error = await LoadAsync(async () =>
+        {
+            _book = await Books.GetBookAsync(BookId, _userId, ComponentToken);
+            _entry = _userId is { } userId ? await Library.FindEntryForBookAsync(userId, BookId, ComponentToken) : null;
+            _related = await Books.GetRelatedBooksAsync(BookId, _userId, 8, ComponentToken);
+            _reviews = await Reviews.GetPublicReviewsForBookAsync(BookId, 1, 5, ComponentToken);
+        });
+        _loading = false;
+    }
+
+    private async Task ReloadEntryAsync()
+    {
+        if (_userId is { } userId)
+        {
+            var error = await LoadAsync(async () =>
+            {
+                _entry = await Library.FindEntryForBookAsync(userId, BookId, ComponentToken);
+                _reviews = await Reviews.GetPublicReviewsForBookAsync(BookId, 1, 5, ComponentToken);
+            });
+            if (error is not null)
+            {
+                Toasts.Error(error);
+            }
+        }
+    }
+
+    private async Task LoadReviewsAsync(int page)
+    {
+        var error = await LoadAsync(async () => _reviews = await Reviews.GetPublicReviewsForBookAsync(BookId, page, 5, ComponentToken));
+        if (error is not null)
+        {
+            Toasts.Error(error);
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        if (_userId is not { } userId)
+        {
+            return;
+        }
+
+        if (await RunAsync(() => Library.AddBookAsync(userId, new AddToLibraryRequest(BookId, _addStatus), ComponentToken), "Added to your library."))
+        {
+            await ReloadEntryAsync();
+        }
+    }
+
+    private Task OnRemovedAsync()
+    {
+        _entry = null;
+        Navigation.NavigateTo("library");
+        return Task.CompletedTask;
+    }
+}

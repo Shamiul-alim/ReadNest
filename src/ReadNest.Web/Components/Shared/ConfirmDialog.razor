@@ -1,0 +1,59 @@
+@* Usage: if (await confirm.ConfirmAsync("Delete note?", "This cannot be undone.", "Delete")) { ... } *@
+<Modal Title="@_title" Open="_open" OpenChanged="OnOpenChanged">
+    <ChildContent>
+        <p class="rn-mb-0">@_message</p>
+        @if (_details is not null)
+        {
+            <ul class="mt-3 mb-0 rn-subtle">
+                @foreach (var line in _details)
+                {
+                    <li>@line</li>
+                }
+            </ul>
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="rn-btn rn-btn-secondary" @onclick="() => Complete(false)">Cancel</button>
+        <button type="button" class="rn-btn @(_danger ? "rn-btn-danger" : "rn-btn-primary")" @onclick="() => Complete(true)">@_confirmText</button>
+    </Footer>
+</Modal>
+
+@code {
+    private TaskCompletionSource<bool>? _pending;
+    private bool _open;
+    private string _title = "";
+    private string _message = "";
+    private string _confirmText = "Confirm";
+    private bool _danger;
+    private IReadOnlyList<string>? _details;
+
+    public Task<bool> ConfirmAsync(string title, string message, string confirmText = "Confirm", bool danger = true, IReadOnlyList<string>? details = null)
+    {
+        _pending?.TrySetResult(false);
+        _pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _title = title;
+        _message = message;
+        _confirmText = confirmText;
+        _danger = danger;
+        _details = details;
+        _open = true;
+        StateHasChanged();
+        return _pending.Task;
+    }
+
+    private void OnOpenChanged(bool open)
+    {
+        if (!open)
+        {
+            Complete(false);
+        }
+    }
+
+    private void Complete(bool result)
+    {
+        _open = false;
+        _pending?.TrySetResult(result);
+        _pending = null;
+        StateHasChanged();
+    }
+}

@@ -1,0 +1,278 @@
+@page "/explore"
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Books
+@using ReadNest.Application.Library
+@using ReadNest.Application.Social
+@inject CatalogService Catalog
+@inject LibraryService Library
+@inject ProfileService Profiles
+
+<AppTitle Text="Explore books" />
+
+<PageHeader Title="Explore books" Description="Search Google Books and Open Library, then add what you find to your library.">
+    <Actions>
+        @if (_userId is not null)
+        {
+            <a class="rn-btn rn-btn-secondary" href="library/add"><Icon Name="plus" /> Add a book manually</a>
+        }
+    </Actions>
+</PageHeader>
+
+<form class="rn-card tight rn-toolbar" role="search" @onsubmit="Submit">
+    <div class="rn-field rn-grow">
+        <label class="rn-label" for="explore-q">Search</label>
+        <input id="explore-q" class="rn-input" type="search" maxlength="200" placeholder="Title, author, ISBN or keyword" @bind="_query" />
+    </div>
+    <div class="rn-field">
+        <label class="rn-label" for="explore-field">Search in</label>
+        <select id="explore-field" class="rn-select" @bind="_field">
+            <option value="@CatalogSearchField.Keyword">Everything</option>
+            <option value="@CatalogSearchField.Title">Title</option>
+            <option value="@CatalogSearchField.Author">Author</option>
+            <option value="@CatalogSearchField.Isbn">ISBN</option>
+            <option value="@CatalogSearchField.Subject">Genre / subject</option>
+        </select>
+    </div>
+    <div class="rn-field">
+        <label class="rn-label" for="explore-lang">Language</label>
+        <select id="explore-lang" class="rn-select" @bind="_language">
+            <option value="">Any language</option>
+            @foreach (var language in SelectOptions.Languages)
+            {
+                <option value="@language.Code">@language.Name</option>
+            }
+        </select>
+    </div>
+    <div class="rn-field">
+        <label class="rn-label" for="explore-source">Source</label>
+        <select id="explore-source" class="rn-select" @bind="_source">
+            <option value="">Automatic</option>
+            @foreach (var provider in Catalog.EnabledProviders)
+            {
+                <option value="@provider">@provider.ToDisplayName()</option>
+            }
+        </select>
+    </div>
+    <button type="submit" class="rn-btn rn-btn-primary"><Icon Name="search" /> Search</button>
+</form>
+
+@if (string.IsNullOrWhiteSpace(Q))
+{
+    <section class="rn-section rn-mt-0">
+        <h2 class="h5">Popular topics</h2>
+        <div class="rn-chips">
+            @foreach (var topic in Topics)
+            {
+                <a class="rn-chip" href="@TopicHref(topic)">@topic</a>
+            }
+        </div>
+    </section>
+    <div class="mt-4">
+        <EmptyState Title="Find your next book" IconName="compass"
+                    Text="Search by title, author, ISBN or subject. Results come from public book catalogues and are matched against your library." />
+    </div>
+}
+else if (_loading)
+{
+    <LoadingIndicator Text="Searching the catalogue…" />
+}
+else if (_error is not null)
+{
+    <ErrorAlert Title="The catalogue is unavailable" Message="@_error" OnRetry="SearchAsync" />
+    @if (_userId is not null)
+    {
+        <p class="mt-3 rn-subtle">Your saved books are still available in <a href="library">My Library</a>.</p>
+    }
+}
+else if (_result is not null)
+{
+    @foreach (var notice in _result.Notices)
+    {
+        <div class="rn-alert rn-alert-info mb-3"><Icon Name="info" /><div class="rn-alert-body">@notice</div></div>
+    }
+
+    @if (_result.Items.Count == 0)
+    {
+        <EmptyState Title="No books found" IconName="search" Text="Try a different spelling, fewer words, or another search field.">
+            @if (_userId is not null)
+            {
+                <a class="rn-btn rn-btn-secondary" href="library/add">Add the book manually</a>
+            }
+        </EmptyState>
+    }
+    else
+    {
+        <p class="rn-subtle">
+            @(_result.TotalItems is { } total ? total.ToString("N0") + " results" : "Results")
+            @if (_result.ServedBy is { } servedBy)
+            {
+                <span> · from @servedBy.ToDisplayName()</span>
+            }
+        </p>
+        <div class="rn-book-grid">
+            @foreach (var book in _result.Items)
+            {
+                var key = book.ExternalId;
+                <article class="rn-book-card" @key="key">
+                    <a class="rn-book-card-link" href="@DetailsHref(book)">
+                        <BookCover Title="@book.Title" Author="@(book.Authors.Count > 0 ? book.Authors[0] : null)" Url="@book.CoverUrl" Size="fill" />
+                        <span class="rn-book-title">@book.Title</span>
+                    </a>
+                    <span class="rn-book-author">@(book.Authors.Count > 0 ? string.Join(", ", book.Authors) : "Unknown author")</span>
+                    <div class="rn-book-meta">
+                        @if (book.PublishedYear is { } year)
+                        {
+                            <span>@year</span>
+                        }
+                        @if (book.PageCount is { } pages)
+                        {
+                            <span>@pages.ToString("N0") pages</span>
+                        }
+                    </div>
+                    @if (_matches.TryGetValue(key, out var status))
+                    {
+                        <span><StatusBadge Status="status" /></span>
+                    }
+                    else if (_userId is not null)
+                    {
+                        <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" disabled="@(_adding == key)" @onclick="() => AddAsync(book)">
+                            @if (_adding == key)
+                            {
+                                <span class="rn-spinner sm"></span>
+                            }
+                            else
+                            {
+                                <Icon Name="plus" />
+                            }
+                            Want to read
+                        </button>
+                    }
+                </article>
+            }
+        </div>
+        <Pager Page="_result.Page" TotalPages="TotalPages" TotalCount="_result.TotalItems" HasMore="_result.HasMore" ItemName="results" OnPageChanged="GoToPage" />
+    }
+}
+
+@code {
+    private static readonly string[] Topics =
+    [
+        "Software Engineering", "Science Fiction", "Fantasy", "History", "Psychology", "Philosophy",
+        "Personal Development", "Mystery", "Biography", "Economics", "Poetry", "Design",
+    ];
+
+    [SupplyParameterFromQuery(Name = "q")] public string? Q { get; set; }
+    [SupplyParameterFromQuery(Name = "field")] public string? Field { get; set; }
+    [SupplyParameterFromQuery(Name = "lang")] public string? Lang { get; set; }
+    [SupplyParameterFromQuery(Name = "source")] public string? Source { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int? PageNumber { get; set; }
+
+    private Guid? _userId;
+    private string _query = "";
+    private CatalogSearchField _field;
+    private string _language = "";
+    private string _source = "";
+    private bool _loading;
+    private string? _error;
+    private string? _adding;
+    private CatalogSearchResult? _result;
+    private IReadOnlyDictionary<string, ReadingStatus> _matches = new Dictionary<string, ReadingStatus>();
+    private bool _initialized;
+
+    private int TotalPages => _result?.TotalItems is { } total
+        ? Math.Min(CatalogService.MaxPage, (int)Math.Ceiling(total / (double)_result.PageSize))
+        : _result?.Page ?? 1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_initialized)
+        {
+            _initialized = true;
+            _userId = await GetUserIdAsync();
+            if (Lang is null && _userId is { } userId)
+            {
+                var profile = await Profiles.GetAsync(userId, ComponentToken);
+                _language = profile?.PreferredLanguage ?? "";
+            }
+        }
+
+        _query = Q ?? "";
+        _field = Enum.TryParse<CatalogSearchField>(Field, ignoreCase: true, out var field) ? field : CatalogSearchField.Keyword;
+        _language = Lang ?? _language;
+        _source = Source ?? "";
+        await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _result = null;
+        _error = null;
+        if (string.IsNullOrWhiteSpace(Q))
+        {
+            return;
+        }
+
+        _loading = true;
+        StateHasChanged();
+        _error = await LoadAsync(async () =>
+        {
+            CatalogProvider? provider = Enum.TryParse<CatalogProvider>(_source, out var p) ? p : null;
+            _result = await Catalog.SearchAsync(
+                new CatalogSearchRequest(Q, _field, Math.Max(1, PageNumber ?? 1), 24, string.IsNullOrEmpty(_language) ? null : _language, provider),
+                ComponentToken);
+            await LoadMatchesAsync();
+        });
+        _loading = false;
+    }
+
+    private async Task LoadMatchesAsync()
+    {
+        if (_userId is not { } userId || _result is null)
+        {
+            return;
+        }
+
+        var keys = _result.Items.Select(b => new CatalogMatchKey(b.Provider, b.ExternalId, b.Isbn13)).ToList();
+        _matches = await Library.GetCatalogMatchesAsync(userId, keys, ComponentToken);
+    }
+
+    private void Submit() => Navigate(1);
+
+    private void GoToPage(int page) => Navigate(page);
+
+    private void Navigate(int page)
+    {
+        var uri = Navigation.GetUriWithQueryParameters("explore", new Dictionary<string, object?>
+        {
+            ["q"] = string.IsNullOrWhiteSpace(_query) ? null : _query.Trim(),
+            ["field"] = _field == CatalogSearchField.Keyword ? null : _field.ToString(),
+            ["lang"] = string.IsNullOrEmpty(_language) ? null : _language,
+            ["source"] = string.IsNullOrEmpty(_source) ? null : _source,
+            ["page"] = page > 1 ? page : null,
+        });
+        Navigation.NavigateTo(uri);
+    }
+
+    private async Task AddAsync(CatalogBook book)
+    {
+        if (_userId is not { } userId)
+        {
+            return;
+        }
+
+        _adding = book.ExternalId;
+        await RunAsync(async () =>
+        {
+            var result = await Library.AddCatalogBookAsync(userId, book, ReadingStatus.WantToRead, ComponentToken);
+            Toasts.Success(result.AlreadyInLibrary ? "This book is already in your library." : $"Added “{book.Title}” to Want to Read.");
+            await LoadMatchesAsync();
+        });
+        _adding = null;
+    }
+
+    private static string DetailsHref(CatalogBook book) =>
+        $"explore/{book.Provider}/{Uri.EscapeDataString(book.ExternalId)}";
+
+    private static string TopicHref(string topic) => $"explore?q={Uri.EscapeDataString(topic)}&field=Subject";
+}

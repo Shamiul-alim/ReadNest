@@ -1,0 +1,126 @@
+@page "/library/add"
+@attribute [Authorize]
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Books
+@using ReadNest.Application.Library
+@inject LibraryService Library
+
+<AppTitle Text="Add a book manually" />
+
+<PageHeader Title="Add a book manually" Description="For books that aren't in the online catalogues, or that you'd rather keep private. Manually entered books are visible only to you.">
+    <Breadcrumbs><a href="library">My Library</a> <Icon Name="chevron-right" /> <span>Add a book</span></Breadcrumbs>
+</PageHeader>
+
+<div class="rn-alert rn-alert-info mb-4">
+    <Icon Name="info" />
+    <div class="rn-alert-body">Tip: most published books can be found in <a href="explore">Explore</a>, which fills in covers, descriptions and page counts automatically.</div>
+</div>
+
+<div class="rn-card" style="max-width:820px">
+    <EditForm Model="_model" OnValidSubmit="SaveAsync" class="rn-form">
+        <DataAnnotationsValidator />
+        <div class="rn-field">
+            <label class="rn-label" for="mb-title">Title</label>
+            <InputText id="mb-title" class="rn-input" @bind-Value="_model.Title" maxlength="500" />
+            <ValidationMessage For="() => _model.Title" />
+        </div>
+        <div class="rn-field">
+            <label class="rn-label" for="mb-subtitle">Subtitle</label>
+            <InputText id="mb-subtitle" class="rn-input" @bind-Value="_model.Subtitle" maxlength="500" />
+        </div>
+        <div class="rn-field">
+            <label class="rn-label" for="mb-authors">Author(s)</label>
+            <InputText id="mb-authors" class="rn-input" @bind-Value="_model.Authors" maxlength="1000" placeholder="Separate multiple authors with commas" />
+            <ValidationMessage For="() => _model.Authors" />
+        </div>
+        <div class="rn-form-row">
+            <div class="rn-field">
+                <label class="rn-label" for="mb-isbn">ISBN</label>
+                <InputText id="mb-isbn" class="rn-input" @bind-Value="_model.Isbn" maxlength="20" placeholder="ISBN-10 or ISBN-13" />
+                <ValidationMessage For="() => _model.Isbn" />
+            </div>
+            <div class="rn-field">
+                <label class="rn-label" for="mb-pages">Pages</label>
+                <InputNumber id="mb-pages" class="rn-input" @bind-Value="_model.PageCount" min="1" />
+                <ValidationMessage For="() => _model.PageCount" />
+            </div>
+            <div class="rn-field">
+                <label class="rn-label" for="mb-year">Year published</label>
+                <InputNumber id="mb-year" class="rn-input" @bind-Value="_model.PublishedYear" min="1000" max="2100" />
+                <ValidationMessage For="() => _model.PublishedYear" />
+            </div>
+        </div>
+        <div class="rn-form-row">
+            <div class="rn-field">
+                <label class="rn-label" for="mb-publisher">Publisher</label>
+                <InputText id="mb-publisher" class="rn-input" @bind-Value="_model.Publisher" maxlength="300" />
+            </div>
+            <div class="rn-field">
+                <label class="rn-label" for="mb-language">Language</label>
+                <InputSelect id="mb-language" class="rn-select" @bind-Value="_model.LanguageCode">
+                    <option value="">Not specified</option>
+                    @foreach (var language in SelectOptions.Languages)
+                    {
+                        <option value="@language.Code">@language.Name</option>
+                    }
+                </InputSelect>
+            </div>
+        </div>
+        <div class="rn-field">
+            <label class="rn-label" for="mb-genres">Genres</label>
+            <InputText id="mb-genres" class="rn-input" @bind-Value="_model.Genres" maxlength="500" placeholder="e.g. Software Engineering, Biography" />
+        </div>
+        <div class="rn-field">
+            <label class="rn-label" for="mb-cover">Cover image URL</label>
+            <InputText id="mb-cover" class="rn-input" @bind-Value="_model.CoverUrl" maxlength="1000" placeholder="https://…" />
+            <span class="rn-hint">Optional. Only https:// images are shown; otherwise a generated cover is used.</span>
+            <ValidationMessage For="() => _model.CoverUrl" />
+        </div>
+        <div class="rn-field">
+            <label class="rn-label" for="mb-description">Description</label>
+            <InputTextArea id="mb-description" class="rn-textarea" @bind-Value="_model.Description" maxlength="10000" />
+        </div>
+        <div class="rn-field" style="max-width:280px">
+            <label class="rn-label" for="mb-status">Add to</label>
+            <InputSelect id="mb-status" class="rn-select" @bind-Value="_model.Status">
+                @foreach (var status in Enum.GetValues<ReadingStatus>())
+                {
+                    <option value="@status">@status.ToDisplayName()</option>
+                }
+            </InputSelect>
+        </div>
+        <div class="rn-form-actions">
+            <a class="rn-btn rn-btn-secondary" href="library">Cancel</a>
+            <button type="submit" class="rn-btn rn-btn-primary" disabled="@IsBusy">Add to my library</button>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    private readonly ManualBookFormModel _model = new();
+
+    private async Task SaveAsync()
+    {
+        var userId = await RequireUserIdAsync();
+        var input = new ManualBookInput(
+            _model.Title,
+            _model.Subtitle,
+            ManualBookFormModel.SplitList(_model.Authors),
+            _model.Isbn,
+            _model.PageCount,
+            _model.PublishedYear,
+            _model.Publisher,
+            string.IsNullOrEmpty(_model.LanguageCode) ? null : _model.LanguageCode,
+            _model.Description,
+            _model.CoverUrl,
+            ManualBookFormModel.SplitList(_model.Genres));
+
+        AddEntryResult? result = null;
+        if (await RunAsync(async () => result = await Library.AddManualBookAsync(userId, input, _model.Status, ComponentToken)) && result is not null)
+        {
+            Toasts.Success(result.AlreadyInLibrary ? "That book was already in your library." : "Book added to your library.");
+            Navigation.NavigateTo($"books/{result.BookId}");
+        }
+    }
+}

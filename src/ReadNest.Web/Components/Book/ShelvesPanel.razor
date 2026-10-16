@@ -1,0 +1,103 @@
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Library
+@inject ShelfService Shelves
+
+<section class="rn-card" aria-labelledby="shelves-heading">
+    <div class="rn-flex rn-between mb-2">
+        <h2 class="rn-card-title rn-mb-0" id="shelves-heading"><Icon Name="layers" /> Shelves</h2>
+        <a class="rn-subtle" href="shelves">Manage</a>
+    </div>
+    @if (_error is not null)
+    {
+        <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+    }
+    else if (_shelves is null)
+    {
+        <LoadingIndicator />
+    }
+    else
+    {
+        @if (_shelves.Count == 0)
+        {
+            <p class="rn-subtle">You haven't created any shelves yet.</p>
+        }
+        else
+        {
+            <fieldset>
+                <legend class="visually-hidden">Shelves containing this book</legend>
+                @foreach (var shelf in _shelves)
+                {
+                    <label class="rn-check mb-1" @key="shelf.ShelfId">
+                        <input type="checkbox" checked="@shelf.ContainsEntry" disabled="@IsBusy" @onchange="e => ToggleAsync(shelf, e)" />
+                        <span>@shelf.Name</span>
+                    </label>
+                }
+            </fieldset>
+        }
+        <form class="rn-flex mt-2" @onsubmit="CreateAsync">
+            <label class="visually-hidden" for="new-shelf-name">New shelf name</label>
+            <input id="new-shelf-name" class="rn-input" maxlength="80" placeholder="New shelf…" @bind="_newShelf" @bind:event="oninput" />
+            <button type="submit" class="rn-btn rn-btn-secondary" disabled="@(IsBusy || string.IsNullOrWhiteSpace(_newShelf))">Add</button>
+        </form>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid UserId { get; set; }
+    [Parameter, EditorRequired] public LibraryEntryDetailsDto Entry { get; set; } = default!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private IReadOnlyList<ShelfMembershipDto>? _shelves;
+    private string? _error;
+    private string _newShelf = "";
+    private Guid _loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor != Entry.Id)
+        {
+            _loadedFor = Entry.Id;
+            await RefreshAsync();
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        _error = await LoadAsync(async () => _shelves = await Shelves.GetMembershipAsync(UserId, Entry.Id, ComponentToken));
+    }
+
+    private async Task ToggleAsync(ShelfMembershipDto shelf, ChangeEventArgs e)
+    {
+        var add = e.Value is true;
+        var ok = await RunAsync(() => add
+                ? Shelves.AddEntryAsync(UserId, shelf.ShelfId, Entry.Id, ComponentToken)
+                : Shelves.RemoveEntryAsync(UserId, shelf.ShelfId, Entry.Id, ComponentToken),
+            add ? $"Added to “{shelf.Name}”." : $"Removed from “{shelf.Name}”.");
+        await RefreshAsync();
+        if (ok)
+        {
+            await OnChanged.InvokeAsync();
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        var name = _newShelf.Trim();
+        if (name.Length == 0)
+        {
+            return;
+        }
+
+        var ok = await RunAsync(async () =>
+        {
+            var id = await Shelves.CreateAsync(UserId, new ShelfRequest(name, null, false), ComponentToken);
+            await Shelves.AddEntryAsync(UserId, id, Entry.Id, ComponentToken);
+        }, $"Created “{name}” and added this book.");
+        if (ok)
+        {
+            _newShelf = "";
+            await RefreshAsync();
+            await OnChanged.InvokeAsync();
+        }
+    }
+}

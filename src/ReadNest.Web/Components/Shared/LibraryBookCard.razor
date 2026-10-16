@@ -1,0 +1,36 @@
+@using ReadNest.Application.Library
+<article class="rn-book-card">
+    @if (Entry.IsFavorite)
+    {
+        <span class="rn-fav-flag" title="Favourite"><Icon Name="heart" Label="Favourite" /></span>
+    }
+    <a class="rn-book-card-link" href="@($"books/{Entry.BookId}")">
+        <BookCover Title="@Entry.Title" Author="@FirstAuthor" Url="@Entry.CoverUrl" Size="fill" />
+        <span class="rn-book-title">@Entry.Title</span>
+    </a>
+    <span class="rn-book-author">@AuthorsText</span>
+    <div class="rn-book-meta">
+        @if (ShowStatus)
+        {
+            <StatusBadge Status="Entry.Status" />
+        }
+        <Stars Value="Entry.Rating" />
+    </div>
+    @if (Entry.Status == ReadingStatus.CurrentlyReading)
+    {
+        <ProgressBar CurrentPage="Entry.CurrentPage" TotalPages="Entry.TotalPages" ShowLabel="false" />
+        <span class="rn-subtle">@ProgressText</span>
+    }
+</article>
+
+@code {
+    [Parameter, EditorRequired] public LibraryEntryDto Entry { get; set; } = default!;
+    [Parameter] public bool ShowStatus { get; set; } = true;
+
+    private string? FirstAuthor => Entry.Authors.Count > 0 ? Entry.Authors[0] : null;
+    private string AuthorsText => Entry.Authors.Count > 0 ? string.Join(", ", Entry.Authors) : "Unknown author";
+
+    private string ProgressText => Entry.ProgressPercent is { } p
+        ? p.ToString("0.#") + "% · page " + Entry.CurrentPage.ToString("N0")
+        : Entry.CurrentPage > 0 ? "Page " + Entry.CurrentPage.ToString("N0") : "Not started";
+}

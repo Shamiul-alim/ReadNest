@@ -1,0 +1,28 @@
+<div class="rn-star-input" role="radiogroup" aria-label="@Label">
+    @for (var i = 1; i <= 5; i++)
+    {
+        var star = i;
+        <button type="button" role="radio" aria-checked="@(Value == star ? "true" : "false")" aria-label="@(star + (star == 1 ? " star" : " stars"))"
+                class="@(Value >= star ? "on" : null)" disabled="@Disabled" @onclick="() => SetAsync(star)">
+            <Icon Name="star" />
+        </button>
+    }
+    @if (Value is not null && AllowClear)
+    {
+        <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm" disabled="@Disabled" @onclick="() => SetAsync(null)">Clear</button>
+    }
+</div>
+
+@code {
+    [Parameter] public int? Value { get; set; }
+    [Parameter] public EventCallback<int?> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "Rating";
+    [Parameter] public bool AllowClear { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; }
+
+    private async Task SetAsync(int? value)
+    {
+        Value = value;
+        await ValueChanged.InvokeAsync(value);
+    }
+}

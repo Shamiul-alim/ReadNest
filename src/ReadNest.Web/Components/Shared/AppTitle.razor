@@ -1,0 +1,27 @@
+@inject IJSRuntime JS
+@* Sets the document title for static pages (PageTitle) and for interactive pages rendered without prerendering. *@
+<PageTitle>@FullTitle</PageTitle>
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+
+    private string? _applied;
+
+    private string FullTitle => string.IsNullOrEmpty(Text) ? "ReadNest" : Text + " · ReadNest";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (RendererInfo.IsInteractive && _applied != FullTitle)
+        {
+            _applied = FullTitle;
+            try
+            {
+                await JS.InvokeVoidAsync("readnest.setTitle", FullTitle);
+            }
+            catch (JSDisconnectedException)
+            {
+                // The circuit closed; nothing to update.
+            }
+        }
+    }
+}

@@ -1,0 +1,208 @@
+@page "/u/{Handle}"
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Reviews
+@using ReadNest.Application.Social
+@inject SocialService Social
+@inject ReviewService Reviews
+
+<AppTitle Text="@(_profile?.DisplayName ?? "Reader")" />
+
+@if (_error is not null)
+{
+    <EmptyState Title="Profile not available" IconName="user" Text="This profile doesn't exist or is private.">
+        <a class="rn-btn rn-btn-secondary" href="community">Find readers</a>
+    </EmptyState>
+}
+else if (_profile is null)
+{
+    <LoadingIndicator />
+}
+else
+{
+    <section class="rn-card rn-flex rn-flex-wrap" style="gap:var(--rn-space-5)">
+        <Avatar Name="@_profile.DisplayName" ImageUrl="@_profile.ProfileImageUrl" Size="lg" />
+        <div style="flex:1;min-width:220px">
+            <h1 class="rn-mb-0" tabindex="-1">@_profile.DisplayName</h1>
+            <div class="rn-subtle">@@@_profile.Handle</div>
+            @if (!string.IsNullOrEmpty(_profile.Bio))
+            {
+                <p class="pre-wrap mt-2 rn-mb-0">@_profile.Bio</p>
+            }
+            <div class="rn-flex rn-flex-wrap mt-2 rn-subtle">
+                <span><strong>@_profile.Followers</strong> follower@(_profile.Followers == 1 ? "" : "s")</span>
+                <span>· <strong>@_profile.Following</strong> following</span>
+                @if (_profile.BooksRead is { } read)
+                {
+                    <span>· <strong>@read</strong> book@(read == 1 ? "" : "s") read</span>
+                }
+            </div>
+        </div>
+        <div>
+            @if (_profile.IsOwnProfile)
+            {
+                <a class="rn-btn rn-btn-secondary" href="profile"><Icon Name="pen" /> Edit profile</a>
+            }
+            else if (_userId is null)
+            {
+                <a class="rn-btn rn-btn-primary" href="@("Account/Login?returnUrl=" + Uri.EscapeDataString("u/" + Handle))">Log in to follow</a>
+            }
+            else if (_profile.IsFollowing)
+            {
+                <button type="button" class="rn-btn rn-btn-secondary" disabled="@IsBusy" @onclick="UnfollowAsync">Following ✓</button>
+            }
+            else
+            {
+                <button type="button" class="rn-btn rn-btn-primary" disabled="@IsBusy" @onclick="FollowAsync"><Icon Name="plus" /> Follow</button>
+            }
+        </div>
+    </section>
+
+    @if (_profile.CurrentlyReading.Count > 0)
+    {
+        <section class="rn-section">
+            <div class="rn-section-header"><h2>Currently reading</h2></div>
+            <div class="rn-book-grid">
+                @foreach (var book in _profile.CurrentlyReading)
+                {
+                    <PublicBookCard Book="book" />
+                }
+            </div>
+        </section>
+    }
+
+    @if (_profile.PublicShelves.Count > 0)
+    {
+        <section class="rn-section">
+            <div class="rn-section-header"><h2>Shelves</h2></div>
+            <div class="rn-chips">
+                @foreach (var shelf in _profile.PublicShelves)
+                {
+                    <a class="rn-chip" href="@("s/" + shelf.ShareSlug)"><Icon Name="layers" /> @shelf.Name (@shelf.BookCount)</a>
+                }
+            </div>
+        </section>
+    }
+
+    @if (_profile.IsLibraryPublic || _profile.IsOwnProfile)
+    {
+        <section class="rn-section">
+            <div class="rn-section-header"><h2>Reading list</h2></div>
+            <nav class="rn-tabs" aria-label="Filter reading list">
+                <button type="button" class="rn-tab @(_status is null ? "active" : null)" @onclick="() => FilterAsync(null)">All</button>
+                @foreach (var status in Enum.GetValues<ReadingStatus>())
+                {
+                    var s = status;
+                    <button type="button" class="rn-tab @(_status == s ? "active" : null)" @onclick="() => FilterAsync(s)">@s.ToDisplayName()</button>
+                }
+            </nav>
+            @if (_library is null)
+            {
+                <LoadingIndicator />
+            }
+            else if (_library.TotalCount == 0)
+            {
+                <p class="rn-subtle">No books here.</p>
+            }
+            else
+            {
+                <div class="rn-book-grid">
+                    @foreach (var book in _library.Items)
+                    {
+                        <PublicBookCard Book="book" ShowStatus="true" />
+                    }
+                </div>
+                <Pager Page="_library.Page" TotalPages="_library.TotalPages" TotalCount="_library.TotalCount" ItemName="books" OnPageChanged="LibraryPageAsync" />
+            }
+            @if (_profile.IsOwnProfile && !_profile.IsLibraryPublic)
+            {
+                <p class="rn-subtle mt-2"><Icon Name="lock" /> Only you can see this list. Make it public in <a href="settings">Settings</a>.</p>
+            }
+        </section>
+    }
+
+    @if (_reviews is { TotalCount: > 0 })
+    {
+        <section class="rn-section">
+            <div class="rn-section-header"><h2>Reviews</h2></div>
+            <div class="rn-stack">
+                @foreach (var review in _reviews.Items)
+                {
+                    <article class="rn-card tight">
+                        <div class="rn-flex rn-flex-wrap"><a class="rn-list-title" href="@("books/" + review.BookId)">@review.BookTitle</a><Stars Value="review.Rating" /><span class="rn-subtle ms-auto">@review.UpdatedAtUtc.ToString("d MMM yyyy")</span></div>
+                        <div class="pre-wrap mt-2">@review.Review</div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+}
+
+@code {
+    [Parameter] public string Handle { get; set; } = "";
+
+    private Guid? _userId;
+    private PublicProfileDto? _profile;
+    private PagedResult<PublicBookDto>? _library;
+    private PagedResult<PublicReviewDto>? _reviews;
+    private ReadingStatus? _status;
+    private int _libraryPage = 1;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _userId = await GetUserIdAsync();
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _error = await LoadAsync(async () =>
+        {
+            _profile = await Social.GetPublicProfileAsync(Handle, _userId, ComponentToken);
+            _reviews = await Reviews.GetRecentPublicReviewsAsync(1, 10, _profile.UserId, ComponentToken);
+            if (_profile.IsLibraryPublic || _profile.IsOwnProfile)
+            {
+                _library = await Social.GetPublicLibraryAsync(Handle, _userId, _status, _libraryPage, ComponentToken);
+            }
+        });
+    }
+
+    private async Task FilterAsync(ReadingStatus? status)
+    {
+        _status = status;
+        _libraryPage = 1;
+        await LoadLibraryAsync();
+    }
+
+    private async Task LibraryPageAsync(int page)
+    {
+        _libraryPage = page;
+        await LoadLibraryAsync();
+    }
+
+    private async Task LoadLibraryAsync()
+    {
+        var error = await LoadAsync(async () => _library = await Social.GetPublicLibraryAsync(Handle, _userId, _status, _libraryPage, ComponentToken));
+        if (error is not null)
+        {
+            Toasts.Error(error);
+        }
+    }
+
+    private async Task FollowAsync()
+    {
+        if (_userId is { } userId && await RunAsync(() => Social.FollowAsync(userId, Handle, ComponentToken), $"You're now following {_profile?.DisplayName}."))
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private async Task UnfollowAsync()
+    {
+        if (_userId is { } userId && await RunAsync(() => Social.UnfollowAsync(userId, Handle, ComponentToken), "Unfollowed."))
+        {
+            await RefreshAsync();
+        }
+    }
+}

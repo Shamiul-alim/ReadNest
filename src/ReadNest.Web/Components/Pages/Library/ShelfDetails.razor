@@ -1,0 +1,111 @@
+@page "/shelves/{ShelfId:guid}"
+@attribute [Authorize]
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Library
+@inject ShelfService ShelfService
+@inject LibraryService Library
+@inject IJSRuntime JS
+
+<AppTitle Text="@(_shelf?.Name ?? "Shelf")" />
+
+@if (_error is not null)
+{
+    <PageHeader Title="Shelf" />
+    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+}
+else if (_shelf is null || _entries is null)
+{
+    <LoadingIndicator />
+}
+else
+{
+    <PageHeader Title="@_shelf.Name" Description="@_shelf.Description">
+        <Breadcrumbs><a href="shelves">Shelves</a> <Icon Name="chevron-right" /> <span>@_shelf.Name</span></Breadcrumbs>
+        <Actions>
+            @if (_shelf.IsPublic)
+            {
+                <button type="button" class="rn-btn rn-btn-secondary" @onclick="CopyLinkAsync"><Icon Name="link" /> Copy share link</button>
+                <a class="rn-btn rn-btn-ghost" href="@ShareUrl" target="_blank" rel="noopener">View public page</a>
+            }
+            else
+            {
+                <span class="rn-chip"><Icon Name="lock" /> Private shelf</span>
+            }
+        </Actions>
+    </PageHeader>
+
+    @if (_entries.TotalCount == 0)
+    {
+        <EmptyState Title="This shelf is empty" IconName="layers" Text="Open any book in your library and tick this shelf in the “Shelves” panel to add it here.">
+            <a class="rn-btn rn-btn-primary" href="library">Go to my library</a>
+        </EmptyState>
+    }
+    else
+    {
+        <div class="rn-book-grid">
+            @foreach (var entry in _entries.Items)
+            {
+                <div @key="entry.Id">
+                    <LibraryBookCard Entry="entry" />
+                    <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm mt-1" @onclick="() => RemoveAsync(entry)">Remove from shelf</button>
+                </div>
+            }
+        </div>
+        <Pager Page="_entries.Page" TotalPages="_entries.TotalPages" TotalCount="_entries.TotalCount" ItemName="books" OnPageChanged="LoadPageAsync" />
+    }
+}
+
+@code {
+    [Parameter] public Guid ShelfId { get; set; }
+
+    private Guid _userId;
+    private ShelfDto? _shelf;
+    private PagedResult<LibraryEntryDto>? _entries;
+    private string? _error;
+    private int _page = 1;
+
+    private string ShareUrl => Navigation.ToAbsoluteUri("s/" + _shelf?.ShareSlug).ToString();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _userId = await RequireUserIdAsync();
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _error = await LoadAsync(async () =>
+        {
+            _shelf = await ShelfService.GetAsync(_userId, ShelfId, ComponentToken);
+            _entries = await Library.ListAsync(_userId, new LibraryQuery { ShelfId = ShelfId, Sort = LibrarySort.Title, Descending = false, Page = _page }, ComponentToken);
+        });
+    }
+
+    private async Task LoadPageAsync(int page)
+    {
+        _page = page;
+        await RefreshAsync();
+    }
+
+    private async Task RemoveAsync(LibraryEntryDto entry)
+    {
+        if (await RunAsync(() => ShelfService.RemoveEntryAsync(_userId, ShelfId, entry.Id, ComponentToken), $"Removed “{entry.Title}” from this shelf."))
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private async Task CopyLinkAsync()
+    {
+        var copied = await JS.InvokeAsync<bool>("readnest.copyText", ShareUrl);
+        if (copied)
+        {
+            Toasts.Success("Share link copied.");
+        }
+        else
+        {
+            Toasts.Info("Copy this link: " + ShareUrl);
+        }
+    }
+}

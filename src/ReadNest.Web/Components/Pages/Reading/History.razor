@@ -1,0 +1,112 @@
+@page "/history"
+@attribute [Authorize]
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Reading
+@inject ReadingSessionService Sessions
+
+<AppTitle Text="Reading history" />
+
+<PageHeader Title="Reading history" Description="Every reading session you've logged, grouped by day." />
+
+<form class="rn-card tight rn-toolbar" @onsubmit="Apply">
+    <div class="rn-field">
+        <label class="rn-label" for="hist-from">From</label>
+        <input id="hist-from" class="rn-input" type="date" @bind="_from" />
+    </div>
+    <div class="rn-field">
+        <label class="rn-label" for="hist-to">To</label>
+        <input id="hist-to" class="rn-input" type="date" @bind="_to" />
+    </div>
+    <button type="submit" class="rn-btn rn-btn-primary">Show</button>
+    @if (From is not null || To is not null || Entry is not null)
+    {
+        <a class="rn-btn rn-btn-ghost" href="history">Show all</a>
+    }
+</form>
+
+@if (_error is not null)
+{
+    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+}
+else if (_page is null)
+{
+    <LoadingIndicator />
+}
+else if (_page.TotalCount == 0)
+{
+    <EmptyState Title="No reading sessions yet" IconName="clock"
+                Text="Log a session from any book page — or update your current page and tick “record as today's session”.">
+        <a class="rn-btn rn-btn-primary" href="library/currently-reading">Go to Currently Reading</a>
+    </EmptyState>
+}
+else
+{
+    <p class="rn-subtle">
+        @_page.TotalCount.ToString("N0") session@(_page.TotalCount == 1 ? "" : "s") ·
+        @_page.Items.Sum(s => s.PagesRead).ToString("N0") pages on this page
+    </p>
+    @foreach (var day in _page.Items.GroupBy(s => s.ReadOn))
+    {
+        <section class="rn-day" @key="day.Key">
+            <h2 class="rn-day-heading"><Icon Name="calendar" /> @day.Key.ToString("dddd, d MMMM yyyy") <span class="rn-chip">@day.Sum(s => s.PagesRead) pages</span></h2>
+            <div class="rn-card tight">
+                <div class="rn-list">
+                    @foreach (var session in day)
+                    {
+                        <div class="rn-list-item" @key="session.Id">
+                            <BookCover Title="@session.BookTitle" Url="@session.CoverUrl" Size="xs" />
+                            <div class="rn-list-body">
+                                <a class="rn-list-title" href="@("books/" + session.BookId)">@session.BookTitle</a>
+                                <div class="rn-subtle">Pages @session.StartPage–@session.EndPage · @session.PagesRead pages@(session.DurationMinutes > 0 ? " · " + session.DurationMinutes + " min" : "")</div>
+                                @if (!string.IsNullOrWhiteSpace(session.Reflection))
+                                {
+                                    <div class="pre-wrap rn-muted mt-1">@session.Reflection</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </section>
+    }
+    <Pager Page="_page.Page" TotalPages="_page.TotalPages" TotalCount="_page.TotalCount" ItemName="sessions" OnPageChanged="GoToPage" />
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "from")] public string? From { get; set; }
+    [SupplyParameterFromQuery(Name = "to")] public string? To { get; set; }
+    [SupplyParameterFromQuery(Name = "entry")] public Guid? Entry { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int? PageNumber { get; set; }
+
+    private Guid _userId;
+    private PagedResult<ReadingSessionDto>? _page;
+    private string? _error;
+    private DateOnly? _from;
+    private DateOnly? _to;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _userId = await RequireUserIdAsync();
+        _from = DateOnly.TryParse(From, CultureInfo.InvariantCulture, out var from) ? from : null;
+        _to = DateOnly.TryParse(To, CultureInfo.InvariantCulture, out var to) ? to : null;
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync() =>
+        _error = await LoadAsync(async () =>
+            _page = await Sessions.GetHistoryAsync(_userId, new HistoryQuery(_from, _to, Entry, PageNumber ?? 1, 50), ComponentToken));
+
+    private void Apply() => Navigate(1);
+
+    private void GoToPage(int page) => Navigate(page);
+
+    private void Navigate(int page) =>
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters("history", new Dictionary<string, object?>
+        {
+            ["from"] = _from?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ["to"] = _to?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ["entry"] = Entry,
+            ["page"] = page > 1 ? page : null,
+        }));
+}

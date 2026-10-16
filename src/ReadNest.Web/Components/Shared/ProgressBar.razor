@@ -1,0 +1,30 @@
+@if (Percent is { } percent)
+{
+    var text = percent.ToString("0.##", CultureInfo.InvariantCulture);
+    <div class="rn-progress @(percent >= 100 ? "complete" : null)" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+         aria-valuenow="@text" aria-label="@("Reading progress " + text + "%")">
+        <span style="width:@(text)%"></span>
+    </div>
+    @if (ShowLabel)
+    {
+        <div class="rn-progress-label">
+            <span>@CurrentPage.ToString("N0") / @(TotalPages?.ToString("N0")) pages</span>
+            <span>@percent.ToString("0.##")% complete</span>
+        </div>
+    }
+}
+else if (ShowLabel)
+{
+    <div class="rn-progress-label">
+        <span>@(CurrentPage > 0 ? "Page " + CurrentPage.ToString("N0") : "Not started")</span>
+        <span>Total pages unknown</span>
+    </div>
+}
+
+@code {
+    [Parameter] public int CurrentPage { get; set; }
+    [Parameter] public int? TotalPages { get; set; }
+    [Parameter] public bool ShowLabel { get; set; } = true;
+
+    private decimal? Percent => ReadNest.Domain.Entities.UserBook.CalculateProgress(CurrentPage, TotalPages);
+}

@@ -1,0 +1,145 @@
+@page "/analytics"
+@attribute [Authorize]
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Analytics
+@inject StatisticsService Statistics
+
+<AppTitle Text="Analytics" />
+
+<PageHeader Title="Analytics" Description="Your reading year at a glance, calculated from your library and logged sessions.">
+    <Actions>
+        @if (_data is not null)
+        {
+            <label class="visually-hidden" for="analytics-year">Year</label>
+            <select id="analytics-year" class="rn-select" style="width:auto" value="@_data.Year" @onchange="ChangeYearAsync">
+                @foreach (var year in _data.AvailableYears)
+                {
+                    <option value="@year">@year</option>
+                }
+            </select>
+        }
+    </Actions>
+</PageHeader>
+
+@if (_error is not null)
+{
+    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+}
+else if (_data is null)
+{
+    <LoadingIndicator />
+}
+else
+{
+    <div class="rn-stats">
+        <StatCard Label="Books finished" Value="@_data.BooksCompleted.ToString("N0")" IconName="check-circle" Hint="@(_data.Goal.HasGoal ? "Goal: " + _data.Goal.TargetBooks : "No goal set")" />
+        <StatCard Label="Pages read" Value="@_data.PagesRead.ToString("N0")" IconName="file" Hint="@(_data.AveragePagesPerReadingDay + " per reading day")" />
+        <StatCard Label="Reading days" Value="@_data.ReadingDays.ToString("N0")" IconName="calendar" Hint="@(_data.Sessions + " sessions")" />
+        <StatCard Label="Time logged" Value="@FormatMinutes(_data.MinutesRead)" IconName="clock" />
+        <StatCard Label="Average rating" Value="@(_data.AverageRating?.ToString("0.0") ?? "—")" IconName="star" Hint="Books finished this year" />
+        <StatCard Label="Longest streak" Value="@(_data.Streak.Longest + " days")" IconName="flame" Hint="@("Current: " + _data.Streak.Current)" />
+    </div>
+
+    @if (_data.BooksCompleted == 0 && _data.PagesRead == 0)
+    {
+        <div class="mt-4">
+            <EmptyState Title="No activity in this year" IconName="chart" Text="Finish books and log reading sessions to fill your analytics." />
+        </div>
+    }
+    else
+    {
+        <div class="rn-grid rn-grid-2 rn-section">
+            <section class="rn-card">
+                <h2 class="rn-card-title">Pages per month</h2>
+                <MonthlyChart Months="_data.Months" Metric="pages" Caption="Pages read per month" />
+            </section>
+            <section class="rn-card">
+                <h2 class="rn-card-title">Books finished per month</h2>
+                <MonthlyChart Months="_data.Months" Metric="books" Caption="Books finished per month" />
+            </section>
+            <section class="rn-card">
+                <h2 class="rn-card-title">Minutes per month</h2>
+                <MonthlyChart Months="_data.Months" Metric="minutes" Caption="Minutes read per month" />
+            </section>
+            <section class="rn-card">
+                <h2 class="rn-card-title">Ratings of finished books</h2>
+                @if (_data.RatingDistribution.Sum() == 0)
+                {
+                    <p class="rn-subtle rn-mb-0">No finished books were rated this year.</p>
+                }
+                else
+                {
+                    <NamedBars Items="RatingRows" Label="Rating distribution" />
+                }
+            </section>
+            <section class="rn-card">
+                <h2 class="rn-card-title">Top genres</h2>
+                @if (_data.TopGenres.Count == 0)
+                {
+                    <p class="rn-subtle rn-mb-0">Finish at least @StatisticsService.MinimumBooksForTasteStats books in a year to see genre trends.</p>
+                }
+                else
+                {
+                    <NamedBars Items="_data.TopGenres" Label="Top genres" />
+                }
+            </section>
+            <section class="rn-card">
+                <h2 class="rn-card-title">Top authors</h2>
+                @if (_data.TopAuthors.Count == 0)
+                {
+                    <p class="rn-subtle rn-mb-0">Finish at least @StatisticsService.MinimumBooksForTasteStats books in a year to see author trends.</p>
+                }
+                else
+                {
+                    <NamedBars Items="_data.TopAuthors" Label="Top authors" />
+                }
+            </section>
+        </div>
+
+        @if (_data.LongestBook is { } longest)
+        {
+            <section class="rn-card rn-section">
+                <h2 class="rn-card-title"><Icon Name="trophy" /> Longest book finished</h2>
+                <div class="rn-flex">
+                    <BookCover Title="@longest.Title" Url="@longest.CoverUrl" Size="sm" />
+                    <div>
+                        <a class="rn-list-title" href="@("books/" + longest.BookId)">@longest.Title</a>
+                        <div class="rn-subtle">@longest.Pages?.ToString("N0") pages · finished @longest.CompletedOn.ToString("d MMM yyyy")</div>
+                    </div>
+                </div>
+            </section>
+        }
+    }
+}
+
+@code {
+    private Guid _userId;
+    private YearAnalyticsDto? _data;
+    private string? _error;
+    private int? _year;
+
+    private IReadOnlyList<NamedCountDto> RatingRows => _data is null ? [] :
+        Enumerable.Range(1, 5).Reverse().Select(r => new NamedCountDto(new string('★', r), _data.RatingDistribution[r - 1])).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = await RequireUserIdAsync();
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync() =>
+        _error = await LoadAsync(async () => _data = await Statistics.GetYearAnalyticsAsync(_userId, _year ?? DateTime.UtcNow.Year, ComponentToken));
+
+    private async Task ChangeYearAsync(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var year))
+        {
+            _year = year;
+            await RefreshAsync();
+        }
+    }
+
+    private static string FormatMinutes(int minutes) =>
+        minutes < 60 ? minutes + " min" : (minutes / 60) + "h " + (minutes % 60) + "m";
+}

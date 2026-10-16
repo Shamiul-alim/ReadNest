@@ -1,0 +1,31 @@
+@using ReadNest.Application.Notes
+<article class="rn-note @(Note.Type == NoteType.Quote ? "quote" : null)">
+    <div class="rn-note-head">
+        <span class="rn-chip">@(Note.Type == NoteType.Quote ? "❝ " : "")@Note.Type.ToDisplayName()</span>
+        @if (ShowBook)
+        {
+            <a href="@("books/" + Note.BookId)"><strong>@Note.BookTitle</strong></a>
+        }
+        @if (Note.PageNumber is { } pageNumber)
+        {
+            <span>p. @pageNumber</span>
+        }
+        @if (!string.IsNullOrEmpty(Note.Chapter))
+        {
+            <span>· @Note.Chapter</span>
+        }
+        <span title="@("Last edited " + Note.UpdatedAtUtc.ToString("u"))">· @Note.UpdatedAtUtc.ToString("d MMM yyyy")</span>
+        <span class="rn-note-actions">
+            <button type="button" class="rn-btn rn-btn-ghost rn-btn-icon" aria-label="Edit note" @onclick="OnEdit"><Icon Name="pen" /></button>
+            <button type="button" class="rn-btn rn-btn-danger-ghost rn-btn-icon" aria-label="Delete note" @onclick="OnDelete"><Icon Name="trash" /></button>
+        </span>
+    </div>
+    <div class="rn-note-content">@Note.Content</div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public NoteDto Note { get; set; } = default!;
+    [Parameter] public bool ShowBook { get; set; } = true;
+    [Parameter] public EventCallback OnEdit { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+}

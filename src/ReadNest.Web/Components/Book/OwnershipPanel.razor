@@ -1,0 +1,179 @@
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Library
+@inject CollectionService Collection
+@inject LibraryService Library
+
+<section class="rn-card" aria-labelledby="ownership-heading">
+    <h2 class="rn-card-title" id="ownership-heading"><Icon Name="archive" /> Your copy</h2>
+    <EditForm Model="_form" OnValidSubmit="SaveAsync" class="rn-form">
+        <DataAnnotationsValidator />
+        <div class="rn-form-row">
+            <div class="rn-field">
+                <label class="rn-label" for="own-status">Ownership</label>
+                <InputSelect id="own-status" class="rn-select" @bind-Value="_form.Ownership">
+                    @foreach (var value in Enum.GetValues<OwnershipStatus>())
+                    {
+                        <option value="@value">@value.ToDisplayName()</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="rn-field">
+                <label class="rn-label" for="own-format">Format</label>
+                <InputSelect id="own-format" class="rn-select" @bind-Value="_form.Format">
+                    <option value="">Not specified</option>
+                    @foreach (var value in Enum.GetValues<BookFormat>())
+                    {
+                        <option value="@value">@value.ToDisplayName()</option>
+                    }
+                </InputSelect>
+            </div>
+        </div>
+        @if (_form.Ownership == OwnershipStatus.Owned)
+        {
+            <div class="rn-form-row">
+                <div class="rn-field">
+                    <label class="rn-label" for="own-date">Acquired on</label>
+                    <InputDate id="own-date" class="rn-input" @bind-Value="_form.AcquiredOn" />
+                </div>
+                <div class="rn-field">
+                    <label class="rn-label" for="own-price">Price paid <span class="rn-hint">(optional)</span></label>
+                    <InputNumber id="own-price" class="rn-input" @bind-Value="_form.PurchasePrice" step="0.01" min="0" />
+                    <ValidationMessage For="() => _form.PurchasePrice" />
+                </div>
+            </div>
+            <div class="rn-field">
+                <label class="rn-label" for="own-condition">Condition notes</label>
+                <InputText id="own-condition" class="rn-input" @bind-Value="_form.ConditionNotes" maxlength="500" placeholder="e.g. Hardcover, signed, slight wear on spine" />
+            </div>
+        }
+        <div class="rn-form-actions">
+            <button type="submit" class="rn-btn rn-btn-secondary" disabled="@IsBusy">Save copy details</button>
+        </div>
+    </EditForm>
+
+    @if (Entry.Ownership == OwnershipStatus.Owned)
+    {
+        <hr class="rn-divider" />
+        <div class="rn-flex rn-between mb-2">
+            <strong>Lending</strong>
+            @if (!Entry.HasOutstandingLoan)
+            {
+                <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" @onclick="OpenLend"><Icon Name="handshake" /> Lend this book</button>
+            }
+        </div>
+        @if (_loans is null)
+        {
+            <LoadingIndicator />
+        }
+        else if (_loans.Count == 0)
+        {
+            <p class="rn-subtle rn-mb-0">Not lent to anyone yet.</p>
+        }
+        else
+        {
+            <div class="rn-list">
+                @foreach (var loan in _loans)
+                {
+                    <div class="rn-list-item" @key="loan.Id">
+                        <div class="rn-list-body">
+                            <strong>@loan.BorrowerName</strong>
+                            <div class="rn-subtle">
+                                Lent @loan.LoanedOn.ToString("d MMM yyyy")
+                                @if (loan.ReturnedOn is { } returned)
+                                {
+                                    <span> · returned @returned.ToString("d MMM yyyy")</span>
+                                }
+                                else if (loan.DueOn is { } due)
+                                {
+                                    <span class="@(loan.IsOverdue ? "rn-error-text" : null)"> · due @due.ToString("d MMM yyyy")@(loan.IsOverdue ? " (overdue)" : "")</span>
+                                }
+                            </div>
+                        </div>
+                        @if (loan.ReturnedOn is null)
+                        {
+                            <button type="button" class="rn-btn rn-btn-primary rn-btn-sm" disabled="@IsBusy" @onclick="() => ReturnAsync(loan)">Mark returned</button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    }
+</section>
+
+<Modal Title="Lend this book" @bind-Open="_lendOpen">
+    <LoanFields Model="_loan" OnValidSubmit="LendAsync" OnCancel="() => _lendOpen = false" Busy="IsBusy" />
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public Guid UserId { get; set; }
+    [Parameter, EditorRequired] public LibraryEntryDetailsDto Entry { get; set; } = default!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private OwnershipFormModel _form = new();
+    private LoanFormModel _loan = new();
+    private IReadOnlyList<LoanDto>? _loans;
+    private bool _lendOpen;
+    private Guid _loadedFor;
+    private DateTime _loadedVersion;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor != Entry.Id || _loadedVersion != Entry.UpdatedAtUtc)
+        {
+            _loadedFor = Entry.Id;
+            _loadedVersion = Entry.UpdatedAtUtc;
+            _form = new OwnershipFormModel
+            {
+                Ownership = Entry.Ownership,
+                Format = Entry.Format,
+                AcquiredOn = Entry.AcquiredOn,
+                PurchasePrice = Entry.PurchasePrice,
+                ConditionNotes = Entry.ConditionNotes,
+            };
+            await LoadLoansAsync();
+        }
+    }
+
+    private async Task LoadLoansAsync()
+    {
+        var error = await LoadAsync(async () => _loans = await Collection.GetLoansAsync(UserId, outstandingOnly: false, Entry.Id, ComponentToken));
+        if (error is not null)
+        {
+            _loans = [];
+            Toasts.Error(error);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new OwnershipRequest(_form.Ownership, _form.Format, _form.AcquiredOn, _form.PurchasePrice, _form.ConditionNotes);
+        if (await RunAsync(() => Collection.UpdateOwnershipAsync(UserId, Entry.Id, request, ComponentToken), "Copy details saved."))
+        {
+            await OnChanged.InvokeAsync();
+        }
+    }
+
+    private async Task OpenLend()
+    {
+        _loan = new LoanFormModel { LoanedOn = await Library.GetTodayAsync(UserId, ComponentToken) };
+        _lendOpen = true;
+    }
+
+    private async Task LendAsync()
+    {
+        var request = new LoanRequest(_loan.BorrowerName, _loan.LoanedOn, _loan.DueOn, _loan.Notes);
+        if (await RunAsync(() => Collection.LendAsync(UserId, Entry.Id, request, ComponentToken), $"Lent to {_loan.BorrowerName}."))
+        {
+            _lendOpen = false;
+            await OnChanged.InvokeAsync();
+        }
+    }
+
+    private async Task ReturnAsync(LoanDto loan)
+    {
+        if (await RunAsync(() => Collection.ReturnAsync(UserId, loan.Id, null, ComponentToken), "Marked as returned."))
+        {
+            await OnChanged.InvokeAsync();
+        }
+    }
+}

@@ -1,0 +1,28 @@
+@using ReadNest.Application.Social
+<article class="rn-book-card">
+    @if (Book.IsCatalogBook)
+    {
+        <a class="rn-book-card-link" href="@("books/" + Book.BookId)">
+            <BookCover Title="@Book.Title" Author="@(Book.Authors.Count > 0 ? Book.Authors[0] : null)" Url="@Book.CoverUrl" Size="fill" />
+            <span class="rn-book-title">@Book.Title</span>
+        </a>
+    }
+    else
+    {
+        <BookCover Title="@Book.Title" Author="@(Book.Authors.Count > 0 ? Book.Authors[0] : null)" Url="@Book.CoverUrl" Size="fill" />
+        <span class="rn-book-title">@Book.Title</span>
+    }
+    <span class="rn-book-author">@string.Join(", ", Book.Authors)</span>
+    <div class="rn-book-meta">
+        @if (ShowStatus)
+        {
+            <StatusBadge Status="Book.Status" />
+        }
+        <Stars Value="Book.Rating" />
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public PublicBookDto Book { get; set; } = default!;
+    [Parameter] public bool ShowStatus { get; set; }
+}

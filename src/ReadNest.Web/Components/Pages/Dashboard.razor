@@ -1,0 +1,223 @@
+@page "/dashboard"
+@attribute [Authorize]
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Analytics
+@using ReadNest.Application.Social
+@inject StatisticsService Statistics
+@inject ProfileService Profiles
+
+<AppTitle Text="Dashboard" />
+
+@if (_data is null && _error is null)
+{
+    <LoadingIndicator Text="Loading your dashboard…" />
+}
+else if (_error is not null)
+{
+    <PageHeader Title="Dashboard" />
+    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+}
+else if (_data is not null)
+{
+    <PageHeader Title="@Greeting" Description="@Subtitle">
+        <Actions>
+            <a class="rn-btn rn-btn-secondary" href="history"><Icon Name="clock" /> Reading history</a>
+            <a class="rn-btn rn-btn-primary" href="explore"><Icon Name="search" /> Find a book</a>
+        </Actions>
+    </PageHeader>
+
+    @if (_data.Counts.Total == 0)
+    {
+        <EmptyState Title="Your library is empty" IconName="library"
+                    Text="You haven't added any books yet. Discover a book to start your library, or add one manually.">
+            <div class="rn-flex rn-flex-wrap" style="justify-content:center">
+                <a class="rn-btn rn-btn-primary" href="explore">Discover books</a>
+                <a class="rn-btn rn-btn-secondary" href="library/add">Add a book manually</a>
+                <a class="rn-btn rn-btn-ghost" href="import-export">Import a CSV</a>
+            </div>
+        </EmptyState>
+    }
+    else
+    {
+        <div class="rn-stats">
+            <StatCard Label="In your library" Value="@_data.Counts.Total.ToString("N0")" IconName="library" Hint="@(_data.Counts.WantToRead.ToString("N0") + " want to read")" />
+            <StatCard Label="Reading now" Value="@_data.Counts.CurrentlyReading.ToString("N0")" IconName="book" />
+            <StatCard Label="Books read" Value="@_data.Counts.Read.ToString("N0")" IconName="check-circle" Hint="All time" />
+            <StatCard Label="Pages read" Value="@_data.PagesReadAllTime.ToString("N0")" IconName="file" Hint="@(_data.PagesReadThisYear.ToString("N0") + " this year · from logged sessions")" />
+            <StatCard Label="Reading streak" Value="@(_data.Streak.Current + (_data.Streak.Current == 1 ? " day" : " days"))" IconName="flame" Hint="@StreakHint" />
+        </div>
+
+        <div class="rn-split rn-section">
+            <div>
+                <section class="rn-card">
+                    <div class="rn-flex rn-between">
+                        <h2 class="rn-card-title rn-mb-0"><Icon Name="chart" /> Monthly activity</h2>
+                        <div class="rn-flex" role="group" aria-label="Chart metric">
+                            <button type="button" class="rn-btn rn-btn-sm @(_metric == "pages" ? "rn-btn-primary" : "rn-btn-ghost")" aria-pressed="@(_metric == "pages" ? "true" : "false")" @onclick="@(() => _metric = "pages")">Pages</button>
+                            <button type="button" class="rn-btn rn-btn-sm @(_metric == "books" ? "rn-btn-primary" : "rn-btn-ghost")" aria-pressed="@(_metric == "books" ? "true" : "false")" @onclick="@(() => _metric = "books")">Books</button>
+                            <button type="button" class="rn-btn rn-btn-sm @(_metric == "minutes" ? "rn-btn-primary" : "rn-btn-ghost")" aria-pressed="@(_metric == "minutes" ? "true" : "false")" @onclick="@(() => _metric = "minutes")">Minutes</button>
+                        </div>
+                    </div>
+                    @if (_data.MonthlyActivity.All(m => m.Pages == 0 && m.BooksCompleted == 0))
+                    {
+                        <p class="rn-subtle mt-3 rn-mb-0">No reading activity in the last 12 months yet. Log a reading session or update your progress to see it here.</p>
+                    }
+                    else
+                    {
+                        <MonthlyChart Months="_data.MonthlyActivity" Metric="@_metric" Today="_data.Today" Caption="Reading activity over the last 12 months" />
+                    }
+                </section>
+
+                <section class="rn-section">
+                    <div class="rn-section-header"><h2>Currently reading</h2><a href="library/currently-reading">View all</a></div>
+                    @if (_data.CurrentlyReading.Count == 0)
+                    {
+                        <p class="rn-subtle">Nothing in progress. Pick something from <a href="library/want-to-read">Want to Read</a>.</p>
+                    }
+                    else
+                    {
+                        <div class="rn-book-grid">
+                            @foreach (var entry in _data.CurrentlyReading)
+                            {
+                                <LibraryBookCard Entry="entry" ShowStatus="false" @key="entry.Id" />
+                            }
+                        </div>
+                    }
+                </section>
+
+                <section class="rn-section">
+                    <div class="rn-section-header"><h2>Recently added</h2><a href="library?sort=DateAdded">View all</a></div>
+                    <div class="rn-book-grid">
+                        @foreach (var entry in _data.RecentlyAdded)
+                        {
+                            <LibraryBookCard Entry="entry" @key="entry.Id" />
+                        }
+                    </div>
+                </section>
+
+                @if (_data.RecentlyCompleted.Count > 0)
+                {
+                    <section class="rn-section">
+                        <div class="rn-section-header"><h2>Recently finished</h2><a href="library/read">View all</a></div>
+                        <div class="rn-book-grid">
+                            @foreach (var entry in _data.RecentlyCompleted)
+                            {
+                                <LibraryBookCard Entry="entry" ShowStatus="false" @key="entry.Id" />
+                            }
+                        </div>
+                    </section>
+                }
+            </div>
+
+            <div>
+                <section class="rn-card">
+                    <h2 class="rn-card-title"><Icon Name="target" /> @_data.Today.Year reading goal</h2>
+                    @if (_data.Goal.HasGoal)
+                    {
+                        <div class="rn-flex" style="gap:var(--rn-space-4)">
+                            <GoalRing Goal="_data.Goal" />
+                            <div>
+                                <div><strong>@_data.Goal.CompletedBooks</strong> of @_data.Goal.TargetBooks books</div>
+                                <div class="rn-subtle">@_data.Goal.RemainingBooks remaining</div>
+                                <div class="rn-chip mt-2">@GoalRing.PaceText(_data.Goal)</div>
+                            </div>
+                        </div>
+                        <a class="rn-btn rn-btn-ghost rn-btn-sm mt-3" href="goals">Edit goal</a>
+                    }
+                    else
+                    {
+                        <p class="rn-subtle">Set a yearly goal to see your pace. You've finished <strong>@_data.Goal.CompletedBooks</strong> book@(_data.Goal.CompletedBooks == 1 ? "" : "s") this year.</p>
+                        <a class="rn-btn rn-btn-primary rn-btn-sm" href="goals">Set a goal</a>
+                    }
+                </section>
+
+                <section class="rn-card">
+                    <h2 class="rn-card-title"><Icon Name="clock" /> Recent sessions</h2>
+                    @if (_data.RecentSessions.Count == 0)
+                    {
+                        <p class="rn-subtle rn-mb-0">No sessions logged yet. Open a book you're reading and log a session.</p>
+                    }
+                    else
+                    {
+                        <div class="rn-list">
+                            @foreach (var session in _data.RecentSessions)
+                            {
+                                <div class="rn-list-item" @key="session.Id">
+                                    <BookCover Title="@session.BookTitle" Url="@session.CoverUrl" Size="xs" />
+                                    <div class="rn-list-body">
+                                        <a class="rn-list-title" href="@("books/" + session.BookId)">@session.BookTitle</a>
+                                        <div class="rn-subtle">@session.ReadOn.ToString("d MMM") · @session.PagesRead pages@(session.DurationMinutes > 0 ? " · " + session.DurationMinutes + " min" : "")</div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </section>
+
+                <section class="rn-card">
+                    <h2 class="rn-card-title"><Icon Name="sparkles" /> Your taste</h2>
+                    @if (_data.TopGenres.Count == 0 && _data.TopAuthors.Count == 0)
+                    {
+                        <p class="rn-subtle rn-mb-0">Finish, rate or favourite at least @StatisticsService.MinimumBooksForTasteStats books to see your favourite genres and authors.</p>
+                    }
+                    else
+                    {
+                        @if (_data.TopGenres.Count > 0)
+                        {
+                            <h3 class="h6 rn-muted">Genres</h3>
+                            <NamedBars Items="_data.TopGenres" />
+                        }
+                        @if (_data.TopAuthors.Count > 0)
+                        {
+                            <h3 class="h6 rn-muted mt-3">Authors</h3>
+                            <NamedBars Items="_data.TopAuthors" />
+                        }
+                        <a class="rn-btn rn-btn-ghost rn-btn-sm mt-2" href="recommendations">See recommendations</a>
+                    }
+                </section>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private DashboardDto? _data;
+    private string? _error;
+    private string _metric = "pages";
+    private string _name = "";
+
+    protected override Task OnInitializedAsync() => RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _error = null;
+        _error = await LoadAsync(async () =>
+        {
+            var userId = await RequireUserIdAsync();
+            _name = (await Profiles.GetAsync(userId, ComponentToken))?.DisplayName ?? "";
+            _data = await Statistics.GetDashboardAsync(userId, ComponentToken);
+        });
+    }
+
+    private string Greeting
+    {
+        get
+        {
+            var first = _name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            return string.IsNullOrEmpty(first) ? "Welcome back" : $"Welcome back, {first}";
+        }
+    }
+
+    private string Subtitle => _data?.Counts.CurrentlyReading switch
+    {
+        null or 0 => "Here's an overview of your reading.",
+        1 => "You're reading 1 book right now.",
+        var n => $"You're reading {n} books right now.",
+    };
+
+    private string StreakHint => _data is null ? "" :
+        _data.Streak.ReadToday ? $"You read today · best {_data.Streak.Longest}" :
+        _data.Streak.Current > 0 ? $"Read today to keep it going · best {_data.Streak.Longest}" :
+        $"Best streak: {_data.Streak.Longest} days";
+}

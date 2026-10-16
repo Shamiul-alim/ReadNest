@@ -1,0 +1,163 @@
+@page "/settings"
+@attribute [Authorize]
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Social
+@inject ProfileService Profiles
+@inject IJSRuntime JS
+
+<AppTitle Text="Settings" />
+
+<PageHeader Title="Settings" Description="Reading preferences, privacy and account security." />
+
+@if (_error is not null)
+{
+    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+}
+else if (_profile is null)
+{
+    <LoadingIndicator />
+}
+else
+{
+    <div class="rn-grid rn-grid-2">
+        <section class="rn-card">
+            <h2 class="rn-card-title"><Icon Name="settings" /> Reading preferences</h2>
+            <EditForm Model="_form" OnValidSubmit="SavePreferencesAsync" class="rn-form">
+                <DataAnnotationsValidator />
+                <div class="rn-field">
+                    <label class="rn-label" for="pref-language">Preferred book language</label>
+                    <InputSelect id="pref-language" class="rn-select" @bind-Value="_form.PreferredLanguage">
+                        <option value="">Any language</option>
+                        @foreach (var language in SelectOptions.Languages)
+                        {
+                            <option value="@language.Code">@language.Name</option>
+                        }
+                    </InputSelect>
+                    <span class="rn-hint">Used as the default language filter when you search the catalogue.</span>
+                </div>
+                <div class="rn-field">
+                    <label class="rn-label" for="pref-tz">Time zone</label>
+                    <InputSelect id="pref-tz" class="rn-select" @bind-Value="_form.TimeZoneId">
+                        @foreach (var zone in Zones)
+                        {
+                            <option value="@zone">@zone</option>
+                        }
+                    </InputSelect>
+                    <span class="rn-hint">
+                        Decides which calendar day your reading counts toward (streaks, goals and history).
+                        @if (_browserZone is not null && _browserZone != _form.TimeZoneId)
+                        {
+                            <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm" @onclick="() => _form.TimeZoneId = _browserZone">Use @_browserZone</button>
+                        }
+                    </span>
+                    <ValidationMessage For="() => _form.TimeZoneId" />
+                </div>
+                <div class="rn-form-actions">
+                    <button type="submit" class="rn-btn rn-btn-primary" disabled="@IsBusy">Save preferences</button>
+                </div>
+            </EditForm>
+        </section>
+
+        <section class="rn-card">
+            <h2 class="rn-card-title"><Icon Name="lock" /> Privacy</h2>
+            <div class="rn-form">
+                <label class="rn-check">
+                    <input type="checkbox" @bind="_form.IsProfilePublic" />
+                    <span><strong>Public profile</strong><br /><span class="rn-subtle">Other readers can find you, view your profile and follow you.</span></span>
+                </label>
+                <label class="rn-check">
+                    <input type="checkbox" @bind="_form.IsLibraryPublic" disabled="@(!_form.IsProfilePublic)" />
+                    <span><strong>Public reading list</strong><br /><span class="rn-subtle">Show your books, statuses and ratings on your public profile. Notes, private reviews and loans are never shared.</span></span>
+                </label>
+                <div class="rn-form-actions">
+                    <button type="button" class="rn-btn rn-btn-primary" disabled="@IsBusy" @onclick="SavePrivacyAsync">Save privacy settings</button>
+                </div>
+            </div>
+            <hr class="rn-divider" />
+            <p class="rn-muted rn-mb-0">Individual reviews and shelves have their own public/private switch.</p>
+        </section>
+
+        <section class="rn-card">
+            <h2 class="rn-card-title"><Icon Name="user" /> Account &amp; security</h2>
+            <p class="rn-muted">Change your email or password, set up two-factor authentication or passkeys, download your account data, or delete your account.</p>
+            <div class="rn-flex rn-flex-wrap">
+                <a class="rn-btn rn-btn-secondary" href="Account/Manage" data-enhance-nav="false">Manage account</a>
+                <a class="rn-btn rn-btn-ghost" href="Account/Manage/ChangePassword" data-enhance-nav="false">Change password</a>
+            </div>
+        </section>
+
+        <section class="rn-card">
+            <h2 class="rn-card-title"><Icon Name="download" /> Your data</h2>
+            <p class="rn-muted">Export your library and everything you've written, or import a reading list.</p>
+            <a class="rn-btn rn-btn-secondary" href="import-export">Import &amp; export</a>
+        </section>
+    </div>
+}
+
+@code {
+    private Guid _userId;
+    private ProfileDto? _profile;
+    private PreferencesFormModel _form = new();
+    private string? _browserZone;
+    private string? _error;
+
+    private IEnumerable<string> Zones =>
+        SelectOptions.TimeZones.Concat(new[] { _form.TimeZoneId, _browserZone ?? "UTC" }).Distinct().Order();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = await RequireUserIdAsync();
+        await RefreshAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var zone = await JS.InvokeAsync<string?>("readnest.timeZone");
+                if (zone is { Length: > 0 and <= 64 } && ReadNest.Application.Common.UserClock.IsKnownTimeZone(zone))
+                {
+                    _browserZone = zone;
+                    StateHasChanged();
+                }
+            }
+            catch (JSException)
+            {
+                // Time zone detection is a convenience only.
+            }
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        _error = await LoadAsync(async () =>
+        {
+            _profile = await Profiles.GetOrCreateAsync(_userId, null, null, ComponentToken);
+            _form = new PreferencesFormModel
+            {
+                PreferredLanguage = _profile.PreferredLanguage,
+                TimeZoneId = _profile.TimeZoneId,
+                IsProfilePublic = _profile.IsProfilePublic,
+                IsLibraryPublic = _profile.IsLibraryPublic,
+            };
+        });
+    }
+
+    private async Task SavePreferencesAsync()
+    {
+        var language = string.IsNullOrEmpty(_form.PreferredLanguage) ? null : _form.PreferredLanguage;
+        await RunAsync(async () => _profile = await Profiles.UpdatePreferencesAsync(_userId, new PreferencesRequest(language, _form.TimeZoneId), ComponentToken), "Preferences saved.");
+    }
+
+    private async Task SavePrivacyAsync()
+    {
+        var ok = await RunAsync(async () => _profile = await Profiles.UpdatePrivacyAsync(_userId, new PrivacyRequest(_form.IsProfilePublic, _form.IsLibraryPublic), ComponentToken), "Privacy settings saved.");
+        if (ok && _profile is not null)
+        {
+            _form.IsLibraryPublic = _profile.IsLibraryPublic;
+        }
+    }
+}

@@ -1,0 +1,36 @@
+@* Loan form used from the book page and the collection page. *@
+<EditForm Model="Model" OnValidSubmit="OnValidSubmit" class="rn-form">
+    <DataAnnotationsValidator />
+    <div class="rn-field">
+        <label class="rn-label" for="loan-borrower">Borrower</label>
+        <InputText id="loan-borrower" class="rn-input" @bind-Value="Model.BorrowerName" maxlength="200" autocomplete="off" />
+        <ValidationMessage For="() => Model.BorrowerName" />
+    </div>
+    <div class="rn-form-row">
+        <div class="rn-field">
+            <label class="rn-label" for="loan-date">Lent on</label>
+            <InputDate id="loan-date" class="rn-input" @bind-Value="Model.LoanedOn" />
+            <ValidationMessage For="() => Model.LoanedOn" />
+        </div>
+        <div class="rn-field">
+            <label class="rn-label" for="loan-due">Expected back <span class="rn-hint">(optional)</span></label>
+            <InputDate id="loan-due" class="rn-input" @bind-Value="Model.DueOn" />
+            <ValidationMessage For="() => Model.DueOn" />
+        </div>
+    </div>
+    <div class="rn-field">
+        <label class="rn-label" for="loan-notes">Notes <span class="rn-hint">(optional)</span></label>
+        <InputTextArea id="loan-notes" class="rn-textarea" @bind-Value="Model.Notes" maxlength="1000" />
+    </div>
+    <div class="rn-form-actions">
+        <button type="button" class="rn-btn rn-btn-secondary" @onclick="OnCancel">Cancel</button>
+        <button type="submit" class="rn-btn rn-btn-primary" disabled="@Busy">Save loan</button>
+    </div>
+</EditForm>
+
+@code {
+    [Parameter, EditorRequired] public LoanFormModel Model { get; set; } = default!;
+    [Parameter] public EventCallback OnValidSubmit { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public bool Busy { get; set; }
+}

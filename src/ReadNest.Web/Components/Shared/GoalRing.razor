@@ -1,0 +1,25 @@
+@using ReadNest.Application.Analytics
+<div class="rn-ring @(Goal.Pace == GoalPace.Completed ? "complete" : null)" style="--value:@Goal.PercentComplete.ToString("0.#", CultureInfo.InvariantCulture);--size:@Size"
+     role="img" aria-label="@(Goal.CompletedBooks + " of " + Goal.TargetBooks + " books read")">
+    <div class="rn-ring-inner">
+        <div>
+            <div class="rn-ring-value">@Goal.CompletedBooks<span class="rn-subtle">/@Goal.TargetBooks</span></div>
+            <div class="rn-ring-caption">books</div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public GoalProgressDto Goal { get; set; } = default!;
+    [Parameter] public string Size { get; set; } = "128px";
+
+    public static string PaceText(GoalProgressDto goal) => goal.Pace switch
+    {
+        GoalPace.Completed => "Goal reached — wonderful!",
+        GoalPace.Ahead => "Ahead of schedule",
+        GoalPace.OnTrack => "On track",
+        GoalPace.Behind => goal.ExpectedByToday - goal.CompletedBooks == 1 ? "1 book behind schedule" : (goal.ExpectedByToday - goal.CompletedBooks) + " books behind schedule",
+        GoalPace.NotStarted => "This goal starts later",
+        _ => "No goal set",
+    };
+}

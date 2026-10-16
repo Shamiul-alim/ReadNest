@@ -1,0 +1,202 @@
+@page "/goals"
+@attribute [Authorize]
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Analytics
+@using ReadNest.Application.Goals
+@using ReadNest.Application.Library
+@inject GoalService GoalService
+@inject StatisticsService Statistics
+@inject LibraryService Library
+
+<AppTitle Text="Reading goals" />
+
+<PageHeader Title="Reading goals" Description="Set a yearly target and watch your progress. A book counts in the year you finished it.">
+    <Actions>
+        <label class="visually-hidden" for="goal-year">Year</label>
+        <select id="goal-year" class="rn-select" style="width:auto" value="@_year" @onchange="ChangeYearAsync">
+            @foreach (var year in YearOptions)
+            {
+                <option value="@year">@year</option>
+            }
+        </select>
+    </Actions>
+</PageHeader>
+
+@if (_error is not null)
+{
+    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+}
+else if (_progress is null)
+{
+    <LoadingIndicator />
+}
+else
+{
+    <div class="rn-split">
+        <div>
+            <section class="rn-card">
+                <h2 class="rn-card-title"><Icon Name="target" /> @_year reading goal</h2>
+                @if (_progress.HasGoal)
+                {
+                    <div class="rn-flex rn-flex-wrap" style="gap:var(--rn-space-5)">
+                        <GoalRing Goal="_progress" Size="150px" />
+                        <dl class="rn-facts rn-mb-0" style="flex:1">
+                            <div class="rn-fact"><dt>Target</dt><dd>@Books(_progress.TargetBooks)</dd></div>
+                            <div class="rn-fact"><dt>Completed</dt><dd>@Books(_progress.CompletedBooks)</dd></div>
+                            <div class="rn-fact"><dt>Remaining</dt><dd>@Books(_progress.RemainingBooks)</dd></div>
+                            <div class="rn-fact"><dt>Pace</dt><dd>@GoalRing.PaceText(_progress)</dd></div>
+                            @if (_year == _today.Year && _progress.Pace != GoalPace.Completed)
+                            {
+                                <div class="rn-fact"><dt>Expected by today</dt><dd>@Books(_progress.ExpectedByToday)</dd></div>
+                            }
+                            <div class="rn-fact"><dt>Pages read</dt><dd>@_progress.PagesRead.ToString("N0")@(_progress.TargetPages is { } tp ? " of " + tp.ToString("N0") : "")</dd></div>
+                        </dl>
+                    </div>
+                    @if (_progress.TargetPages is { } targetPages)
+                    {
+                        <div class="mt-3">
+                            <span class="rn-label">Page goal</span>
+                            <ProgressBar CurrentPage="Math.Min(_progress.PagesRead, targetPages)" TotalPages="targetPages" ShowLabel="false" />
+                        </div>
+                    }
+                }
+                else
+                {
+                    <p class="rn-muted">You haven't set a goal for @_year yet. You've finished <strong>@_progress.CompletedBooks</strong> book@(_progress.CompletedBooks == 1 ? "" : "s") and read <strong>@_progress.PagesRead.ToString("N0")</strong> logged pages in @_year.</p>
+                }
+            </section>
+
+            <section class="rn-section">
+                <div class="rn-section-header"><h2>Finished in @_year</h2></div>
+                @if (_completed.Count == 0)
+                {
+                    <p class="rn-subtle">No books finished in @_year yet. Mark a book as read to count it here.</p>
+                }
+                else
+                {
+                    <div class="rn-card tight">
+                        <div class="rn-list">
+                            @foreach (var book in _completed)
+                            {
+                                <div class="rn-list-item" @key="book.EntryId">
+                                    <BookCover Title="@book.Title" Url="@book.CoverUrl" Size="xs" />
+                                    <div class="rn-list-body">
+                                        <a class="rn-list-title" href="@("books/" + book.BookId)">@book.Title</a>
+                                        <div class="rn-subtle">@string.Join(", ", book.Authors) · finished @book.CompletedOn.ToString("d MMM")</div>
+                                    </div>
+                                    <Stars Value="book.Rating" />
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </section>
+        </div>
+
+        <div>
+            <section class="rn-card">
+                <h2 class="rn-card-title"><Icon Name="pen" /> @(_progress.HasGoal ? "Edit goal" : "Set a goal")</h2>
+                <EditForm Model="_form" OnValidSubmit="SaveAsync" class="rn-form">
+                    <DataAnnotationsValidator />
+                    <div class="rn-field">
+                        <label class="rn-label" for="goal-books">Books to finish in @_year</label>
+                        <InputNumber id="goal-books" class="rn-input" @bind-Value="_form.TargetBooks" min="1" max="1000" />
+                        <ValidationMessage For="() => _form.TargetBooks" />
+                    </div>
+                    <div class="rn-field">
+                        <label class="rn-label" for="goal-pages">Pages to read <span class="rn-hint">(optional)</span></label>
+                        <InputNumber id="goal-pages" class="rn-input" @bind-Value="_form.TargetPages" min="1" />
+                        <ValidationMessage For="() => _form.TargetPages" />
+                    </div>
+                    <div class="rn-form-actions">
+                        @if (_progress.HasGoal)
+                        {
+                            <button type="button" class="rn-btn rn-btn-danger-ghost" disabled="@IsBusy" @onclick="DeleteAsync">Remove goal</button>
+                        }
+                        <button type="submit" class="rn-btn rn-btn-primary" disabled="@IsBusy">Save goal</button>
+                    </div>
+                </EditForm>
+            </section>
+            <section class="rn-card">
+                <h2 class="rn-card-title"><Icon Name="info" /> How progress is counted</h2>
+                <ul class="rn-muted rn-mb-0 ps-3">
+                    <li>A book counts when its status is <em>Read</em> and its finish date falls in the goal's year (in your time zone).</li>
+                    <li>Each book in your library counts once; changing its finish date moves it between years.</li>
+                    <li>Pages come from logged reading sessions, including progress updates recorded as sessions.</li>
+                </ul>
+            </section>
+        </div>
+    </div>
+}
+
+<ConfirmDialog @ref="_confirm" />
+
+@code {
+    private Guid _userId;
+    private DateOnly _today;
+    private int _year;
+    private GoalProgressDto? _progress;
+    private IReadOnlyList<CompletedBookDto> _completed = [];
+    private GoalFormModel _form = new();
+    private string? _error;
+    private ConfirmDialog _confirm = default!;
+
+    private static string Books(int count) => count == 1 ? "1 book" : count.ToString("N0") + " books";
+
+    private IEnumerable<int> YearOptions => Enumerable.Range(_today.Year - 5, 7).Reverse();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = await RequireUserIdAsync();
+        _error = await LoadAsync(async () =>
+        {
+            _today = await Library.GetTodayAsync(_userId, ComponentToken);
+            _year = _today.Year;
+        });
+        if (_error is null)
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        _error = await LoadAsync(async () =>
+        {
+            _progress = await GoalService.GetProgressAsync(_userId, _year, ComponentToken);
+            _completed = await Statistics.GetCompletedBooksAsync(_userId, _year, ComponentToken);
+            _form = new GoalFormModel
+            {
+                TargetBooks = _progress.HasGoal ? _progress.TargetBooks : 12,
+                TargetPages = _progress.TargetPages,
+            };
+        });
+    }
+
+    private async Task ChangeYearAsync(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var year))
+        {
+            _year = year;
+            await RefreshAsync();
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (await RunAsync(() => GoalService.SetGoalAsync(_userId, _year, new GoalRequest(_form.TargetBooks, _form.TargetPages), ComponentToken), "Goal saved."))
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (await _confirm.ConfirmAsync($"Remove your {_year} goal?", "Your reading history is not affected.", "Remove goal")
+            && await RunAsync(() => GoalService.DeleteGoalAsync(_userId, _year, ComponentToken), "Goal removed."))
+        {
+            await RefreshAsync();
+        }
+    }
+}

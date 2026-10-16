@@ -1,0 +1,20 @@
+<span class="rn-avatar @Size" aria-hidden="true">
+    @if (SafeUrl is not null)
+    {
+        <img src="@SafeUrl" alt="" referrerpolicy="no-referrer" loading="lazy" />
+    }
+    else
+    {
+        @Initial
+    }
+</span>
+
+@code {
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public string? ImageUrl { get; set; }
+    [Parameter] public string? Size { get; set; }
+
+    private string? SafeUrl => InputSanitizer.SafeExternalUrl(ImageUrl);
+
+    private string Initial => string.IsNullOrWhiteSpace(Name) ? "R" : Name.Trim()[..1].ToUpperInvariant();
+}

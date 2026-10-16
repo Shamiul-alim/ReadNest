@@ -1,0 +1,20 @@
+@if (!string.IsNullOrEmpty(Message))
+{
+    <div class="rn-alert rn-alert-error" role="alert">
+        <Icon Name="alert" />
+        <div class="rn-alert-body">
+            <strong>@Title</strong>
+            <div>@Message</div>
+        </div>
+        @if (OnRetry.HasDelegate)
+        {
+            <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" @onclick="OnRetry"><Icon Name="refresh" /> Retry</button>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public string Title { get; set; } = "We couldn't load this.";
+    [Parameter] public EventCallback OnRetry { get; set; }
+}

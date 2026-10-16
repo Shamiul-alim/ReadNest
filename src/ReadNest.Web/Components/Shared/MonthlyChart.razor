@@ -1,0 +1,48 @@
+@using ReadNest.Application.Analytics
+@* Lightweight CSS bar chart over real aggregated data. A data table is provided for screen readers. *@
+@if (Months.Count > 0)
+{
+    var max = Math.Max(1, Months.Max(Value));
+    <div class="rn-chart" aria-hidden="true">
+        @foreach (var month in Months)
+        {
+            var value = Value(month);
+            var height = value == 0 ? 2 : Math.Max(4, value * 100.0 / max);
+            var isCurrent = month.Year == Today.Year && month.Month == Today.Month;
+            <div class="rn-chart-col" title="@(month.LongLabel + ": " + value.ToString("N0") + " " + Unit)">
+                <span class="rn-chart-value">@(value == 0 ? "" : Compact(value))</span>
+                <div class="rn-chart-bar @(value == 0 ? "zero" : null) @(isCurrent ? "current" : null)" style="height:@(height.ToString("0.#", CultureInfo.InvariantCulture))%"></div>
+                <span class="rn-chart-label">@month.Label</span>
+            </div>
+        }
+    </div>
+    <table class="visually-hidden">
+        <caption>@Caption</caption>
+        <thead><tr><th scope="col">Month</th><th scope="col">@Unit</th></tr></thead>
+        <tbody>
+            @foreach (var month in Months)
+            {
+                <tr><td>@month.LongLabel</td><td>@Value(month)</td></tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<MonthlyActivityDto> Months { get; set; } = [];
+    [Parameter] public string Metric { get; set; } = "pages";
+    [Parameter] public string Caption { get; set; } = "Monthly reading activity";
+    [Parameter] public DateOnly Today { get; set; }
+
+    private string Unit => Metric switch { "books" => "books finished", "minutes" => "minutes", "sessions" => "sessions", _ => "pages" };
+
+    private int Value(MonthlyActivityDto month) => Metric switch
+    {
+        "books" => month.BooksCompleted,
+        "minutes" => month.Minutes,
+        "sessions" => month.Sessions,
+        _ => month.Pages,
+    };
+
+    private static string Compact(int value) => value >= 10_000 ? (value / 1000.0).ToString("0.#", CultureInfo.InvariantCulture) + "k" : value.ToString("N0");
+}

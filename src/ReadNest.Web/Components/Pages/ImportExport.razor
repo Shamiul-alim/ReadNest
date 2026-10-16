@@ -1,0 +1,139 @@
+@page "/import-export"
+@attribute [Authorize]
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.ImportExport
+@inject ImportExportService Service
+
+<AppTitle Text="Import & export" />
+
+<PageHeader Title="Import &amp; export" Description="Keep your own copy of your reading data, or bring in a reading list from a spreadsheet." />
+
+<div class="rn-grid rn-grid-2">
+    <section class="rn-card">
+        <h2 class="rn-card-title"><Icon Name="download" /> Export</h2>
+        <p class="rn-muted">Downloads include only your own data. The CSV can be opened in any spreadsheet app and re-imported here.</p>
+        <div class="rn-flex rn-flex-wrap">
+            <a class="rn-btn rn-btn-primary" href="api/v1/export/library.csv" download data-enhance-nav="false">Library as CSV</a>
+            <a class="rn-btn rn-btn-secondary" href="api/v1/export/library.json" download data-enhance-nav="false">Everything as JSON</a>
+        </div>
+        <p class="rn-hint mt-3 rn-mb-0">The JSON export contains your library, reading sessions, notes, reviews, loans, shelves, goals and profile settings.</p>
+    </section>
+
+    <section class="rn-card">
+        <h2 class="rn-card-title"><Icon Name="upload" /> Import a CSV reading list</h2>
+        <p class="rn-muted">UTF-8 CSV, up to @(ImportExportService.MaxImportBytes / 1024) KB and @ImportExportService.MaxImportRows.ToString("N0") rows. Books already in your library are skipped.</p>
+        <div class="rn-field">
+            <label class="rn-label" for="import-file">CSV file</label>
+            <InputFile id="import-file" class="rn-input" accept=".csv,text/csv" OnChange="OnFileSelected" disabled="@IsBusy" />
+        </div>
+        @if (_file is not null)
+        {
+            <p class="rn-subtle mt-2">Selected: <strong>@_file.Name</strong> (@(_file.Size / 1024.0).ToString("0.#") KB)</p>
+        }
+        <div class="rn-form-actions mt-3">
+            <button type="button" class="rn-btn rn-btn-primary" disabled="@(_file is null || IsBusy)" @onclick="ImportAsync">
+                @if (IsBusy)
+                {
+                    <span class="rn-spinner sm" aria-hidden="true"></span>
+                }
+                Import
+            </button>
+        </div>
+    </section>
+</div>
+
+@if (_summary is not null)
+{
+    <section class="rn-card rn-section" aria-live="polite">
+        <h2 class="rn-card-title"><Icon Name="check-circle" /> Import summary</h2>
+        <div class="rn-stats mb-3">
+            <StatCard Label="Rows in file" Value="@_summary.TotalRows.ToString("N0")" IconName="file" />
+            <StatCard Label="Imported" Value="@_summary.Imported.ToString("N0")" IconName="check" />
+            <StatCard Label="Skipped" Value="@_summary.Skipped.Count.ToString("N0")" IconName="bookmark" />
+            <StatCard Label="Invalid" Value="@_summary.Errors.Count.ToString("N0")" IconName="alert" />
+        </div>
+        @if (_summary.Errors.Count > 0)
+        {
+            <h3 class="h6">Rows with problems</h3>
+            <div class="rn-table-wrap mb-3">
+                <table class="rn-table">
+                    <thead><tr><th scope="col">Line</th><th scope="col">Title</th><th scope="col">Problem</th></tr></thead>
+                    <tbody>
+                        @foreach (var error in _summary.Errors.Take(200))
+                        {
+                            <tr><td>@error.LineNumber</td><td>@error.Title</td><td>@string.Join(" ", error.Errors)</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        @if (_summary.Skipped.Count > 0)
+        {
+            <h3 class="h6">Skipped rows</h3>
+            <div class="rn-table-wrap">
+                <table class="rn-table">
+                    <thead><tr><th scope="col">Line</th><th scope="col">Title</th><th scope="col">Reason</th></tr></thead>
+                    <tbody>
+                        @foreach (var skipped in _summary.Skipped.Take(200))
+                        {
+                            <tr><td>@skipped.LineNumber</td><td>@skipped.Title</td><td>@skipped.Reason</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+
+<section class="rn-card rn-section">
+    <h2 class="rn-card-title"><Icon Name="info" /> CSV format</h2>
+    <p class="rn-muted">The first row must be a header. Only <code>Title</code> is required; columns can be in any order and header names are not case-sensitive.</p>
+    <pre class="rn-card tight rn-mono" style="white-space:pre-wrap">Title,Author,ISBN,Status,CurrentPage,TotalPages,Rating,StartedOn,CompletedOn,Favorite,Shelves
+Clean Code,Robert C. Martin,9780132350884,Currently Reading,180,464,,2026-09-01,,false,Software Engineering
+The Hobbit,J. R. R. Tolkien,,Read,,310,5,,2026-03-14,true,Fiction; Favourites</pre>
+    <ul class="rn-muted ps-3 rn-mb-0">
+        <li><strong>Author</strong> and <strong>Shelves</strong>: separate multiple values with semicolons.</li>
+        <li><strong>Status</strong>: Want to Read, Currently Reading, Read, Paused or Did Not Finish (empty = Want to Read).</li>
+        <li><strong>Rating</strong>: 1–5. <strong>Dates</strong>: YYYY-MM-DD, not in the future. <strong>CompletedOn</strong> only with status Read.</li>
+        <li>Rows with an ISBN that matches a catalogue book reuse it; other rows create private book records visible only to you.</li>
+        <li>Imports never create reading sessions, so your statistics only reflect reading you actually log.</li>
+    </ul>
+</section>
+
+@code {
+    private IBrowserFile? _file;
+    private ImportSummary? _summary;
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _summary = null;
+        _file = e.File;
+        if (_file.Size > ImportExportService.MaxImportBytes)
+        {
+            Toasts.Error($"That file is larger than {ImportExportService.MaxImportBytes / 1024} KB.");
+            _file = null;
+        }
+    }
+
+    private async Task ImportAsync()
+    {
+        if (_file is null)
+        {
+            return;
+        }
+
+        var userId = await RequireUserIdAsync();
+        var file = _file;
+        if (await RunAsync(async () =>
+            {
+                await using var stream = file.OpenReadStream(ImportExportService.MaxImportBytes, ComponentToken);
+                var summary = await Service.ImportCsvAsync(userId, stream, ComponentToken);
+                _summary = summary;
+                Toasts.Success($"Imported {summary.Imported} book(s).");
+            }))
+        {
+            _file = null;
+        }
+    }
+}

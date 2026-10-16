@@ -1,0 +1,5 @@
+<span class="rn-status rn-status-@Status">@Status.ToDisplayName()</span>
+
+@code {
+    [Parameter, EditorRequired] public ReadingStatus Status { get; set; }
+}

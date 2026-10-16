@@ -1,0 +1,159 @@
+@page "/community"
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Reviews
+@using ReadNest.Application.Social
+@inject SocialService Social
+@inject ReviewService Reviews
+
+<AppTitle Text="Readers & reviews" />
+
+<PageHeader Title="Readers &amp; reviews" Description="Find readers with public profiles and see what the community is reviewing." />
+
+<div class="rn-split">
+    <div>
+        <section>
+            <div class="rn-section-header"><h2>Recent public reviews</h2></div>
+            @if (_reviewsError is not null)
+            {
+                <ErrorAlert Message="@_reviewsError" OnRetry="LoadReviewsAsync" />
+            }
+            else if (_reviews is null)
+            {
+                <LoadingIndicator />
+            }
+            else if (_reviews.TotalCount == 0)
+            {
+                <EmptyState Title="No public reviews yet" IconName="star" Text="When readers publish a review, it appears here and on the book's page." />
+            }
+            else
+            {
+                <div class="rn-stack">
+                    @foreach (var review in _reviews.Items)
+                    {
+                        <article class="rn-card tight">
+                            <div class="rn-flex" style="align-items:flex-start">
+                                <a href="@("books/" + review.BookId)" tabindex="-1" aria-hidden="true"><BookCover Title="@review.BookTitle" Url="@review.CoverUrl" Size="sm" /></a>
+                                <div style="min-width:0;flex:1">
+                                    <a class="rn-list-title" href="@("books/" + review.BookId)">@review.BookTitle</a>
+                                    <div class="rn-flex rn-flex-wrap rn-subtle">
+                                        <span>by
+                                            @if (review.ReviewerHandle is not null)
+                                            {
+                                                <a href="@("u/" + review.ReviewerHandle)">@review.ReviewerName</a>
+                                            }
+                                            else
+                                            {
+                                                @review.ReviewerName
+                                            }
+                                        </span>
+                                        <Stars Value="review.Rating" />
+                                        <span>@review.UpdatedAtUtc.ToString("d MMM yyyy")</span>
+                                    </div>
+                                    <div class="pre-wrap mt-2">@(review.Review.Length > 600 ? review.Review[..600] + "…" : review.Review)</div>
+                                </div>
+                            </div>
+                        </article>
+                    }
+                </div>
+                <Pager Page="_reviews.Page" TotalPages="_reviews.TotalPages" TotalCount="_reviews.TotalCount" ItemName="reviews" OnPageChanged="ReviewsPageAsync" />
+            }
+        </section>
+    </div>
+
+    <div>
+        <section class="rn-card">
+            <h2 class="rn-card-title"><Icon Name="search" /> Find readers</h2>
+            <form class="rn-flex" role="search" @onsubmit="SearchPeopleAsync">
+                <label class="visually-hidden" for="people-search">Name or handle</label>
+                <input id="people-search" class="rn-input" type="search" maxlength="200" placeholder="Name or handle" @bind="_peopleSearch" />
+                <button type="submit" class="rn-btn rn-btn-secondary">Search</button>
+            </form>
+            @if (_people is not null)
+            {
+                <PeopleList People="_people" Empty="No public profiles match." />
+            }
+        </section>
+
+        @if (_userId is not null)
+        {
+            <section class="rn-card">
+                <h2 class="rn-card-title"><Icon Name="users" /> Following</h2>
+                @if (_following is null)
+                {
+                    <LoadingIndicator />
+                }
+                else
+                {
+                    <PeopleList People="_following" Empty="You're not following anyone yet." />
+                }
+            </section>
+            <section class="rn-card">
+                <h2 class="rn-card-title"><Icon Name="users" /> Followers</h2>
+                @if (_followers is null)
+                {
+                    <LoadingIndicator />
+                }
+                else
+                {
+                    <PeopleList People="_followers" Empty="No followers yet. Make your profile public in Settings so others can find you." />
+                }
+            </section>
+        }
+        else
+        {
+            <section class="rn-card">
+                <p class="rn-muted">Create an account to follow readers, publish reviews and join challenges.</p>
+                <a class="rn-btn rn-btn-primary" href="Account/Register">Sign up free</a>
+            </section>
+        }
+    </div>
+</div>
+
+@code {
+    private Guid? _userId;
+    private PagedResult<PublicReviewDto>? _reviews;
+    private IReadOnlyList<PersonDto>? _people;
+    private IReadOnlyList<PersonDto>? _following;
+    private IReadOnlyList<PersonDto>? _followers;
+    private string? _reviewsError;
+    private string _peopleSearch = "";
+    private int _reviewsPage = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = await GetUserIdAsync();
+        await LoadReviewsAsync();
+        await SearchPeopleAsync();
+        if (_userId is { } userId)
+        {
+            var error = await LoadAsync(async () =>
+            {
+                _following = await Social.GetFollowingAsync(userId, ComponentToken);
+                _followers = await Social.GetFollowersAsync(userId, ComponentToken);
+            });
+            if (error is not null)
+            {
+                Toasts.Error(error);
+            }
+        }
+    }
+
+    private async Task LoadReviewsAsync() =>
+        _reviewsError = await LoadAsync(async () => _reviews = await Reviews.GetRecentPublicReviewsAsync(_reviewsPage, 10, null, ComponentToken));
+
+    private async Task ReviewsPageAsync(int page)
+    {
+        _reviewsPage = page;
+        await LoadReviewsAsync();
+    }
+
+    private async Task SearchPeopleAsync()
+    {
+        var error = await LoadAsync(async () => _people = await Social.SearchPeopleAsync(_peopleSearch, _userId, ComponentToken));
+        if (error is not null)
+        {
+            Toasts.Error(error);
+        }
+    }
+}

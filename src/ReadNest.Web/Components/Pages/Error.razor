@@ -1,0 +1,25 @@
+﻿@page "/Error"
+@using System.Diagnostics
+
+<AppTitle Text="Something went wrong" />
+
+<EmptyState Title="Something went wrong" IconName="alert"
+            Text="An unexpected error occurred while processing your request. Your data has not been lost. Please try again in a moment.">
+    @if (ShowRequestId)
+    {
+        <p class="rn-subtle">Reference: <code>@RequestId</code></p>
+    }
+    <a class="rn-btn rn-btn-primary" href="">Back to ReadNest</a>
+</EmptyState>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

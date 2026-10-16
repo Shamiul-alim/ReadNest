@@ -1,0 +1,92 @@
+@page "/reviews"
+@attribute [Authorize]
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Reviews
+@inject ReviewService Reviews
+
+<AppTitle Text="My reviews" />
+
+<PageHeader Title="My ratings &amp; reviews" Description="All the books you've rated or reviewed. Private reviews are visible only to you." />
+
+@if (_error is not null)
+{
+    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+}
+else if (_page is null)
+{
+    <LoadingIndicator />
+}
+else if (_page.TotalCount == 0)
+{
+    <EmptyState Title="No ratings or reviews yet" IconName="star" Text="Rate a book from its page in your library to see it here.">
+        <a class="rn-btn rn-btn-primary" href="library/read">Rate books you've read</a>
+    </EmptyState>
+}
+else
+{
+    <div class="rn-stack">
+        @foreach (var review in _page.Items)
+        {
+            <article class="rn-card tight" @key="review.EntryId">
+                <div class="rn-flex rn-flex-wrap" style="align-items:flex-start">
+                    <BookCover Title="@review.BookTitle" Url="@review.CoverUrl" Size="sm" />
+                    <div style="flex:1;min-width:0">
+                        <div class="rn-flex rn-flex-wrap">
+                            <a class="rn-list-title" href="@("books/" + review.BookId)">@review.BookTitle</a>
+                            <Stars Value="review.Rating" ShowEmpty="true" />
+                            @if (review.Review is not null)
+                            {
+                                <span class="rn-chip">
+                                    @if (review.Visibility == ReviewVisibility.Public)
+                                    {
+                                        <Icon Name="globe" /><span> Public</span>
+                                    }
+                                    else
+                                    {
+                                        <Icon Name="lock" /><span> Private</span>
+                                    }
+                                </span>
+                            }
+                        </div>
+                        @if (review.Review is not null)
+                        {
+                            <div class="pre-wrap mt-2">@review.Review</div>
+                        }
+                        else
+                        {
+                            <p class="rn-subtle mt-1 rn-mb-0">Rated without a written review.</p>
+                        }
+                        @if (review.UpdatedAtUtc is { } updated)
+                        {
+                            <div class="rn-subtle mt-1">Updated @updated.ToString("d MMM yyyy")</div>
+                        }
+                    </div>
+                </div>
+            </article>
+        }
+    </div>
+    <Pager Page="_page.Page" TotalPages="_page.TotalPages" TotalCount="_page.TotalCount" ItemName="reviews" OnPageChanged="GoToPageAsync" />
+}
+
+@code {
+    private Guid _userId;
+    private PagedResult<MyReviewDto>? _page;
+    private string? _error;
+    private int _pageNumber = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = await RequireUserIdAsync();
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync() =>
+        _error = await LoadAsync(async () => _page = await Reviews.GetMyReviewsAsync(_userId, _pageNumber, 20, ComponentToken));
+
+    private async Task GoToPageAsync(int page)
+    {
+        _pageNumber = page;
+        await RefreshAsync();
+    }
+}

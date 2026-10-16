@@ -1,0 +1,130 @@
+@page "/challenges/{ChallengeId:guid}"
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Social
+@inject ChallengeService ChallengeService
+
+<AppTitle Text="@(_data?.Challenge.Title ?? "Challenge")" />
+
+@if (_error is not null)
+{
+    <EmptyState Title="Challenge not available" IconName="trophy" Text="This challenge doesn't exist, or it is private.">
+        <a class="rn-btn rn-btn-secondary" href="challenges">All challenges</a>
+    </EmptyState>
+}
+else if (_data is null)
+{
+    <LoadingIndicator />
+}
+else
+{
+    var c = _data.Challenge;
+    <PageHeader Title="@c.Title" Description="@c.Description">
+        <Breadcrumbs><a href="challenges">Challenges</a> <Icon Name="chevron-right" /> <span>@c.Title</span></Breadcrumbs>
+        <Actions>
+            @if (_userId is null)
+            {
+                <a class="rn-btn rn-btn-primary" href="@("Account/Login?returnUrl=" + Uri.EscapeDataString("challenges/" + ChallengeId))">Log in to join</a>
+            }
+            else if (c.IsOwner)
+            {
+                <button type="button" class="rn-btn rn-btn-danger-ghost" disabled="@IsBusy" @onclick="DeleteAsync"><Icon Name="trash" /> Delete challenge</button>
+            }
+            else if (c.IsParticipant)
+            {
+                <button type="button" class="rn-btn rn-btn-secondary" disabled="@IsBusy" @onclick="LeaveAsync">Leave challenge</button>
+            }
+            else if (_data.Today <= c.EndsOn)
+            {
+                <button type="button" class="rn-btn rn-btn-primary" disabled="@IsBusy" @onclick="JoinAsync"><Icon Name="plus" /> Join challenge</button>
+            }
+        </Actions>
+    </PageHeader>
+
+    <div class="rn-stats mb-4">
+        <StatCard Label="Target" Value="@(c.TargetBooks + " books")" IconName="target" />
+        <StatCard Label="Dates" Value="@(c.StartsOn.ToString("d MMM") + " – " + c.EndsOn.ToString("d MMM"))" IconName="calendar" Hint="@c.EndsOn.Year.ToString()" />
+        <StatCard Label="Participants" Value="@c.ParticipantCount.ToString()" IconName="users" />
+        @if (_data.MyBooksCompleted is { } mine)
+        {
+            <StatCard Label="Your progress" Value="@(mine + " / " + c.TargetBooks)" IconName="check-circle" Hint="@(mine >= c.TargetBooks ? "Completed!" : (c.TargetBooks - mine) + " to go")" />
+        }
+    </div>
+
+    <section class="rn-card">
+        <h2 class="rn-card-title"><Icon Name="trophy" /> Leaderboard</h2>
+        <p class="rn-subtle">Books marked as read with a finish date between @c.StartsOn.ToString("d MMM yyyy") and @c.EndsOn.ToString("d MMM yyyy").</p>
+        <div class="rn-list">
+            @foreach (var participant in _data.Participants)
+            {
+                <div class="rn-list-item">
+                    <Avatar Name="@participant.DisplayName" />
+                    <div class="rn-list-body">
+                        @if (participant.Handle is not null)
+                        {
+                            <a class="rn-list-title" href="@("u/" + participant.Handle)">@participant.DisplayName</a>
+                        }
+                        else
+                        {
+                            <span class="rn-list-title">@participant.DisplayName</span>
+                        }
+                        @if (participant.IsYou)
+                        {
+                            <span class="rn-chip">You</span>
+                        }
+                        <ProgressBar CurrentPage="Math.Min(participant.BooksCompleted, c.TargetBooks)" TotalPages="c.TargetBooks" ShowLabel="false" />
+                    </div>
+                    <strong>@participant.BooksCompleted</strong>
+                </div>
+            }
+        </div>
+    </section>
+}
+
+<ConfirmDialog @ref="_confirm" />
+
+@code {
+    [Parameter] public Guid ChallengeId { get; set; }
+
+    private Guid? _userId;
+    private ChallengeDetailsDto? _data;
+    private string? _error;
+    private ConfirmDialog _confirm = default!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _userId = await GetUserIdAsync();
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync() =>
+        _error = await LoadAsync(async () => _data = await ChallengeService.GetAsync(ChallengeId, _userId, ComponentToken));
+
+    private async Task JoinAsync()
+    {
+        if (_userId is { } userId && await RunAsync(() => ChallengeService.JoinAsync(userId, ChallengeId, ComponentToken), "You've joined the challenge. Happy reading!"))
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private async Task LeaveAsync()
+    {
+        if (_userId is { } userId
+            && await _confirm.ConfirmAsync("Leave this challenge?", "Your reading history is not affected. You can rejoin while the challenge is running.", "Leave", danger: false)
+            && await RunAsync(() => ChallengeService.LeaveAsync(userId, ChallengeId, ComponentToken), "You've left the challenge."))
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_userId is { } userId
+            && await _confirm.ConfirmAsync("Delete this challenge?", "The challenge and its participant list will be deleted for everyone.", "Delete challenge")
+            && await RunAsync(() => ChallengeService.DeleteAsync(userId, ChallengeId, ComponentToken), "Challenge deleted."))
+        {
+            Navigation.NavigateTo("challenges");
+        }
+    }
+}

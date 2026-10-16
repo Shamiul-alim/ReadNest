@@ -1,0 +1,71 @@
+﻿@page "/"
+@layout PublicLayout
+
+<AppTitle Text="Your personal library and reading tracker" />
+
+<section class="rn-hero">
+    <div>
+        <span class="rn-chip mb-3"><Icon Name="sparkles" /> Discover · Track · Learn</span>
+        <h1>A calm home for every book you read.</h1>
+        <p class="lead">
+            ReadNest keeps your reading life in one place: find books in public catalogues, organise them on shelves,
+            log your progress, and keep the quotes and lessons you never want to forget.
+        </p>
+        <div class="rn-flex rn-flex-wrap mt-4">
+            <AuthorizeView>
+                <Authorized>
+                    <a class="rn-btn rn-btn-primary rn-btn-lg" href="dashboard">Go to my dashboard <Icon Name="arrow-right" /></a>
+                    <a class="rn-btn rn-btn-secondary rn-btn-lg" href="explore">Explore books</a>
+                </Authorized>
+                <NotAuthorized>
+                    <a class="rn-btn rn-btn-primary rn-btn-lg" href="Account/Register">Start your library <Icon Name="arrow-right" /></a>
+                    <a class="rn-btn rn-btn-secondary rn-btn-lg" href="explore">Browse the catalogue</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+        <p class="rn-subtle mt-3">Free to use. Your notes and private lists stay private.</p>
+    </div>
+    <div class="rn-hero-art" aria-hidden="true">
+        <BookCover Title="The Pragmatic Reader" Author="Your next favourite" Size="" />
+        <BookCover Title="Notes Worth Keeping" Author="A knowledge journal" Size="" />
+        <BookCover Title="One Page a Day" Author="Habits that last" Size="" />
+        <div class="rn-card tight rn-hero-card">
+            <div class="rn-flex rn-between"><strong>Currently reading</strong><span class="rn-status rn-status-CurrentlyReading">38.8%</span></div>
+            <div class="rn-subtle mb-2">Page 180 of 464</div>
+            <div class="rn-progress"><span style="width:38.8%"></span></div>
+        </div>
+    </div>
+</section>
+
+<section class="rn-features" aria-label="Features">
+    <div class="rn-card">
+        <div class="rn-feature-icon"><Icon Name="compass" /></div>
+        <h2 class="h5">Discover</h2>
+        <p class="rn-muted rn-mb-0">Search by title, author, ISBN or subject across Google Books and Open Library, with automatic fallback if one is unavailable.</p>
+    </div>
+    <div class="rn-card">
+        <div class="rn-feature-icon"><Icon Name="library" /></div>
+        <h2 class="h5">Organise</h2>
+        <p class="rn-muted rn-mb-0">Reading statuses, custom shelves, favourites, and a catalogue of the physical books you own and lend.</p>
+    </div>
+    <div class="rn-card">
+        <div class="rn-feature-icon"><Icon Name="clock" /></div>
+        <h2 class="h5">Track</h2>
+        <p class="rn-muted rn-mb-0">Log reading sessions, follow your progress page by page, keep streaks and work toward yearly goals.</p>
+    </div>
+    <div class="rn-card">
+        <div class="rn-feature-icon"><Icon Name="pen" /></div>
+        <h2 class="h5">Remember</h2>
+        <p class="rn-muted rn-mb-0">A searchable journal of notes, quotes, takeaways and action items — private by default.</p>
+    </div>
+    <div class="rn-card">
+        <div class="rn-feature-icon"><Icon Name="chart" /></div>
+        <h2 class="h5">Understand</h2>
+        <p class="rn-muted rn-mb-0">Monthly activity, favourite genres and authors, and transparent recommendations based on what you enjoyed.</p>
+    </div>
+    <div class="rn-card">
+        <div class="rn-feature-icon"><Icon Name="users" /></div>
+        <h2 class="h5">Share, if you want</h2>
+        <p class="rn-muted rn-mb-0">Public profiles, shareable shelves, published reviews and reading challenges — all opt-in.</p>
+    </div>
+</section>

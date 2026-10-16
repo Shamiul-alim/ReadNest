@@ -1,0 +1,33 @@
+@* Shared fields for creating and editing a note. Must be placed inside an EditForm bound to the same model. *@
+<div class="rn-form-row">
+    <div class="rn-field">
+        <label class="rn-label" for="@(IdPrefix + "-type")">Type</label>
+        <InputSelect id="@(IdPrefix + "-type")" class="rn-select" @bind-Value="Model.Type">
+            @foreach (var type in Enum.GetValues<NoteType>())
+            {
+                <option value="@type">@type.ToDisplayName()</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="rn-field">
+        <label class="rn-label" for="@(IdPrefix + "-page")">Page <span class="rn-hint">(optional)</span></label>
+        <InputNumber id="@(IdPrefix + "-page")" class="rn-input" @bind-Value="Model.PageNumber" min="0" />
+        <ValidationMessage For="() => Model.PageNumber" />
+    </div>
+    <div class="rn-field">
+        <label class="rn-label" for="@(IdPrefix + "-chapter")">Chapter <span class="rn-hint">(optional)</span></label>
+        <InputText id="@(IdPrefix + "-chapter")" class="rn-input" @bind-Value="Model.Chapter" maxlength="200" />
+        <ValidationMessage For="() => Model.Chapter" />
+    </div>
+</div>
+<div class="rn-field">
+    <label class="rn-label" for="@(IdPrefix + "-content")">@(Model.Type == NoteType.Quote ? "Quote" : "Note")</label>
+    <InputTextArea id="@(IdPrefix + "-content")" class="rn-textarea" @bind-Value="Model.Content" maxlength="5000"
+                   placeholder="@(Model.Type == NoteType.Quote ? "Copy a short passage that resonated with you" : "What do you want to remember?")" />
+    <ValidationMessage For="() => Model.Content" />
+</div>
+
+@code {
+    [Parameter, EditorRequired] public NoteFormModel Model { get; set; } = default!;
+    [Parameter, EditorRequired] public string IdPrefix { get; set; } = "note";
+}

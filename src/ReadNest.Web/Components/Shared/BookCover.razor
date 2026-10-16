@@ -1,0 +1,42 @@
+@* A book cover: the provider image when available, layered over a generated typographic cover that remains
+   visible if the image is missing or fails to load. *@
+<div class="rn-cover @Size @Class" style="--rn-cover-bg:@Background" aria-hidden="@(Decorative ? "true" : null)">
+    <div class="rn-cover-fallback">
+        <span class="rn-cover-title">@Title</span>
+        @if (!string.IsNullOrEmpty(Author))
+        {
+            <span class="rn-cover-author">@Author</span>
+        }
+    </div>
+    @if (SafeUrl is not null)
+    {
+        <img class="rn-cover-img" src="@SafeUrl" alt="@(Decorative ? "" : $"Cover of {Title}")" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+    }
+</div>
+
+@code {
+    private static readonly string[] Palette = ["#312e81", "#1e3a5f", "#7c2d12", "#14532d", "#4a1d5c", "#713f12", "#134e4a", "#7f1d1d", "#1f2937", "#3b0764"];
+
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Author { get; set; }
+    [Parameter] public string? Url { get; set; }
+    [Parameter] public string Size { get; set; } = "md";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public bool Decorative { get; set; } = true;
+
+    private string? SafeUrl => InputSanitizer.SafeExternalUrl(Url);
+
+    private string Background
+    {
+        get
+        {
+            var hash = 0;
+            foreach (var c in Title)
+            {
+                hash = unchecked(hash * 31 + c);
+            }
+
+            return Palette[Math.Abs(hash % Palette.Length)];
+        }
+    }
+}

@@ -1,0 +1,156 @@
+@page "/challenges"
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Library
+@using ReadNest.Application.Social
+@inject ChallengeService ChallengeService
+@inject LibraryService Library
+
+<AppTitle Text="Reading challenges" />
+
+<PageHeader Title="Reading challenges" Description="Read a number of books within a date range — on your own or with other readers. Progress counts books you mark as read during the challenge.">
+    <Actions>
+        @if (_userId is not null)
+        {
+            <button type="button" class="rn-btn rn-btn-primary" @onclick="OpenCreate"><Icon Name="plus" /> New challenge</button>
+        }
+        else
+        {
+            <a class="rn-btn rn-btn-primary" href="Account/Login?returnUrl=challenges">Log in to join</a>
+        }
+    </Actions>
+</PageHeader>
+
+@if (_error is not null)
+{
+    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+}
+else
+{
+    @if (_userId is not null)
+    {
+        <section>
+            <div class="rn-section-header"><h2>Your challenges</h2></div>
+            @if (_mine is null)
+            {
+                <LoadingIndicator />
+            }
+            else if (_mine.Count == 0)
+            {
+                <p class="rn-subtle">You haven't joined any challenges yet.</p>
+            }
+            else
+            {
+                <ChallengeGrid Challenges="_mine" Today="_today" />
+            }
+        </section>
+    }
+
+    <section class="rn-section">
+        <div class="rn-section-header"><h2>Public challenges</h2></div>
+        @if (_public is null)
+        {
+            <LoadingIndicator />
+        }
+        else if (_public.Count == 0)
+        {
+            <EmptyState Title="No public challenges yet" IconName="trophy" Text="Create one and invite other readers to join." />
+        }
+        else
+        {
+            <ChallengeGrid Challenges="_public" Today="_today" />
+        }
+    </section>
+}
+
+<Modal Title="New reading challenge" @bind-Open="_open">
+    <EditForm Model="_form" OnValidSubmit="CreateAsync" class="rn-form">
+        <DataAnnotationsValidator />
+        <div class="rn-field">
+            <label class="rn-label" for="ch-title">Title</label>
+            <InputText id="ch-title" class="rn-input" @bind-Value="_form.Title" maxlength="120" placeholder="e.g. Summer Classics" />
+            <ValidationMessage For="() => _form.Title" />
+        </div>
+        <div class="rn-field">
+            <label class="rn-label" for="ch-description">Description</label>
+            <InputTextArea id="ch-description" class="rn-textarea" @bind-Value="_form.Description" maxlength="1000" />
+        </div>
+        <div class="rn-form-row">
+            <div class="rn-field">
+                <label class="rn-label" for="ch-target">Books to read</label>
+                <InputNumber id="ch-target" class="rn-input" @bind-Value="_form.TargetBooks" min="1" max="500" />
+                <ValidationMessage For="() => _form.TargetBooks" />
+            </div>
+            <div class="rn-field">
+                <label class="rn-label" for="ch-start">Starts</label>
+                <InputDate id="ch-start" class="rn-input" @bind-Value="_form.StartsOn" />
+                <ValidationMessage For="() => _form.StartsOn" />
+            </div>
+            <div class="rn-field">
+                <label class="rn-label" for="ch-end">Ends</label>
+                <InputDate id="ch-end" class="rn-input" @bind-Value="_form.EndsOn" />
+                <ValidationMessage For="() => _form.EndsOn" />
+            </div>
+        </div>
+        <label class="rn-check">
+            <InputCheckbox @bind-Value="_form.IsPublic" />
+            <span>Public — listed here so anyone can join. Participants with private profiles appear anonymously.</span>
+        </label>
+        <div class="rn-form-actions">
+            <button type="button" class="rn-btn rn-btn-secondary" @onclick="() => _open = false">Cancel</button>
+            <button type="submit" class="rn-btn rn-btn-primary" disabled="@IsBusy">Create challenge</button>
+        </div>
+    </EditForm>
+</Modal>
+
+@code {
+    private Guid? _userId;
+    private DateOnly _today = DateOnly.FromDateTime(DateTime.UtcNow);
+    private IReadOnlyList<ChallengeSummaryDto>? _mine;
+    private IReadOnlyList<ChallengeSummaryDto>? _public;
+    private string? _error;
+    private bool _open;
+    private ChallengeFormModel _form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = await GetUserIdAsync();
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _error = await LoadAsync(async () =>
+        {
+            if (_userId is { } userId)
+            {
+                _today = await Library.GetTodayAsync(userId, ComponentToken);
+                _mine = await ChallengeService.ListAsync(userId, mineOnly: true, ComponentToken);
+            }
+
+            _public = await ChallengeService.ListAsync(_userId, mineOnly: false, ComponentToken);
+        });
+    }
+
+    private void OpenCreate()
+    {
+        _form = new ChallengeFormModel { StartsOn = _today, EndsOn = _today.AddMonths(3) };
+        _open = true;
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_userId is not { } userId || _form.StartsOn is not { } start || _form.EndsOn is not { } end)
+        {
+            return;
+        }
+
+        Guid id = default;
+        var request = new ChallengeRequest(_form.Title, _form.Description, _form.TargetBooks, start, end, _form.IsPublic);
+        if (await RunAsync(async () => id = await ChallengeService.CreateAsync(userId, request, ComponentToken), "Challenge created."))
+        {
+            _open = false;
+            Navigation.NavigateTo($"challenges/{id}");
+        }
+    }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "readnest-ui-smoke",
+  "private": true,
+  "description": "Optional browser smoke test: drives a running ReadNest instance with an installed Chrome/Edge.",
+  "type": "module",
+  "scripts": {
+    "smoke": "node ui-smoke.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "1.49.1"
+  }
+}

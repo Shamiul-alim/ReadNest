@@ -1,0 +1,170 @@
+@page "/notes"
+@attribute [Authorize]
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Notes
+@inject NoteService NoteService
+
+<AppTitle Text="Notes & journal" />
+
+<PageHeader Title="Notes &amp; journal" Description="Every note, quote, takeaway, lesson and action item you've saved — searchable and private to you." />
+
+<form class="rn-card tight rn-toolbar" role="search" @onsubmit="Apply">
+    <div class="rn-field rn-grow">
+        <label class="rn-label" for="notes-search">Search notes</label>
+        <input id="notes-search" class="rn-input" type="search" maxlength="200" placeholder="Words in a note, chapter or book title" @bind="_search" />
+    </div>
+    <div class="rn-field">
+        <label class="rn-label" for="notes-type">Type</label>
+        <select id="notes-type" class="rn-select" @bind="_type">
+            <option value="">All types</option>
+            @foreach (var type in Enum.GetValues<NoteType>())
+            {
+                <option value="@type">@type.ToDisplayName()</option>
+            }
+        </select>
+    </div>
+    <div class="rn-field">
+        <label class="rn-label" for="notes-book">Book</label>
+        <select id="notes-book" class="rn-select" @bind="_entry">
+            <option value="">All books</option>
+            @foreach (var book in _books)
+            {
+                <option value="@book.EntryId">@book.Title (@book.Count)</option>
+            }
+        </select>
+    </div>
+    <button type="submit" class="rn-btn rn-btn-primary"><Icon Name="search" /> Search</button>
+</form>
+
+@if (_error is not null)
+{
+    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+}
+else if (_notes is null)
+{
+    <LoadingIndicator />
+}
+else if (_notes.TotalCount == 0)
+{
+    @if (string.IsNullOrWhiteSpace(Q) && Type is null && Entry is null)
+    {
+        <EmptyState Title="Your journal is empty" IconName="pen" Text="Open a book from your library and add notes, quotes or key takeaways as you read.">
+            <a class="rn-btn rn-btn-primary" href="library/currently-reading">Go to Currently Reading</a>
+        </EmptyState>
+    }
+    else
+    {
+        <EmptyState Title="No matching notes" IconName="search" Text="Try other words or remove a filter." />
+    }
+}
+else
+{
+    <p class="rn-subtle">@_notes.TotalCount.ToString("N0") note@(_notes.TotalCount == 1 ? "" : "s")</p>
+    @foreach (var note in _notes.Items)
+    {
+        <NoteCard Note="note" OnEdit="() => OpenEdit(note)" OnDelete="() => DeleteAsync(note)" @key="note.Id" />
+    }
+    <Pager Page="_notes.Page" TotalPages="_notes.TotalPages" TotalCount="_notes.TotalCount" ItemName="notes" OnPageChanged="GoToPage" />
+}
+
+<Modal Title="Edit note" @bind-Open="_editOpen">
+    <EditForm Model="_editModel" OnValidSubmit="SaveAsync" class="rn-form">
+        <DataAnnotationsValidator />
+        <NoteFields Model="_editModel" IdPrefix="journal-note" />
+        <div class="rn-form-actions">
+            <button type="button" class="rn-btn rn-btn-secondary" @onclick="() => _editOpen = false">Cancel</button>
+            <button type="submit" class="rn-btn rn-btn-primary" disabled="@IsBusy">Save changes</button>
+        </div>
+    </EditForm>
+</Modal>
+
+<ConfirmDialog @ref="_confirm" />
+
+@code {
+    [SupplyParameterFromQuery(Name = "q")] public string? Q { get; set; }
+    [SupplyParameterFromQuery(Name = "type")] public string? Type { get; set; }
+    [SupplyParameterFromQuery(Name = "entry")] public Guid? Entry { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int? PageNumber { get; set; }
+
+    private Guid _userId;
+    private PagedResult<NoteDto>? _notes;
+    private IReadOnlyList<NamedEntryDto> _books = [];
+    private string? _error;
+    private string _search = "";
+    private string _type = "";
+    private string _entry = "";
+    private bool _editOpen;
+    private Guid? _editingId;
+    private NoteFormModel _editModel = new();
+    private ConfirmDialog _confirm = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = await RequireUserIdAsync();
+        var error = await LoadAsync(async () => _books = await NoteService.GetBooksWithNotesAsync(_userId, ComponentToken));
+        if (error is not null)
+        {
+            Toasts.Error(error);
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _search = Q ?? "";
+        _type = Type ?? "";
+        _entry = Entry?.ToString() ?? "";
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        NoteType? type = Enum.TryParse<NoteType>(Type, out var t) ? t : null;
+        _error = await LoadAsync(async () =>
+            _notes = await NoteService.SearchAsync(_userId, new NoteQuery(Q, type, Entry, PageNumber ?? 1, 20), ComponentToken));
+    }
+
+    private void Apply() => Navigate(1);
+
+    private void GoToPage(int page) => Navigate(page);
+
+    private void Navigate(int page) =>
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters("notes", new Dictionary<string, object?>
+        {
+            ["q"] = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(),
+            ["type"] = string.IsNullOrEmpty(_type) ? null : _type,
+            ["entry"] = Guid.TryParse(_entry, out var entry) ? entry : null,
+            ["page"] = page > 1 ? page : null,
+        }));
+
+    private void OpenEdit(NoteDto note)
+    {
+        _editingId = note.Id;
+        _editModel = new NoteFormModel { Type = note.Type, Content = note.Content, PageNumber = note.PageNumber, Chapter = note.Chapter };
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_editingId is not { } id)
+        {
+            return;
+        }
+
+        var request = new NoteRequest(_editModel.Type, _editModel.Content, _editModel.PageNumber, _editModel.Chapter);
+        if (await RunAsync(() => NoteService.UpdateAsync(_userId, id, request, ComponentToken), "Note updated."))
+        {
+            _editOpen = false;
+            await RefreshAsync();
+        }
+    }
+
+    private async Task DeleteAsync(NoteDto note)
+    {
+        if (await _confirm.ConfirmAsync("Delete note?", "This note will be permanently deleted.", "Delete")
+            && await RunAsync(() => NoteService.DeleteAsync(_userId, note.Id, ComponentToken), "Note deleted."))
+        {
+            await RefreshAsync();
+        }
+    }
+}

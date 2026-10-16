@@ -1,0 +1,15 @@
+<div class="rn-card rn-stat">
+    <span class="rn-stat-label"><Icon Name="@IconName" /> @Label</span>
+    <span class="rn-stat-value">@Value</span>
+    @if (!string.IsNullOrEmpty(Hint))
+    {
+        <span class="rn-stat-hint">@Hint</span>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter, EditorRequired] public string Value { get; set; } = "";
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public string IconName { get; set; } = "book";
+}

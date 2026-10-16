@@ -1,0 +1,21 @@
+@implements IDisposable
+@inject ToastService Toasts
+
+<div class="rn-toasts" role="status" aria-live="polite" aria-atomic="false">
+    @foreach (var toast in Toasts.Current)
+    {
+        <div class="rn-toast @toast.Kind.ToString().ToLowerInvariant()" @key="toast.Id">
+            <Icon Name="@(toast.Kind switch { ToastKind.Success => "check", ToastKind.Error => "alert", _ => "info" })" />
+            <span>@toast.Message</span>
+            <button type="button" aria-label="Dismiss notification" @onclick="() => Toasts.Dismiss(toast.Id)"><Icon Name="x" /></button>
+        </div>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized() => Toasts.Changed += OnChanged;
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Toasts.Changed -= OnChanged;
+}

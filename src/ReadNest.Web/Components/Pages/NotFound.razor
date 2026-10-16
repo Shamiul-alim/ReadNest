@@ -1,0 +1,12 @@
+﻿@page "/not-found"
+@layout MainLayout
+
+<AppTitle Text="Page not found" />
+
+<EmptyState Title="We couldn't find that page" IconName="compass"
+            Text="The page may have moved, or the link may be incorrect. Private items are also shown as not found to anyone but their owner.">
+    <div class="rn-flex rn-flex-wrap" style="justify-content:center">
+        <a class="rn-btn rn-btn-primary" href="">Go home</a>
+        <a class="rn-btn rn-btn-secondary" href="explore">Explore books</a>
+    </div>
+</EmptyState>

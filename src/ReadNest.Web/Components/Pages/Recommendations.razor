@@ -1,0 +1,175 @@
+@page "/recommendations"
+@attribute [Authorize]
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Books
+@using ReadNest.Application.Library
+@using ReadNest.Application.Recommendations
+@inject RecommendationService RecommendationService
+@inject CatalogService Catalog
+@inject LibraryService Library
+
+<AppTitle Text="Recommended for you" />
+
+<PageHeader Title="Recommended for you"
+            Description="Suggestions are rule-based: they come from the authors and genres of books you finished, rated highly or marked as favourites. Each one explains why it was picked." />
+
+@if (_error is not null)
+{
+    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+}
+else if (_data is null)
+{
+    <LoadingIndicator Text="Finding books for you…" />
+}
+else
+{
+    @if (_data.Items.Count == 0)
+    {
+        <EmptyState Title="Not enough to go on yet" IconName="sparkles"
+                    Text="@(_data.SignalCount == 0
+                        ? "Finish, rate or favourite a few books and we'll suggest more like them."
+                        : "No unread books in ReadNest's catalogue match your favourite authors and genres yet. Try the catalogue searches below or discover more books.")">
+            <a class="rn-btn rn-btn-primary" href="explore">Discover books</a>
+        </EmptyState>
+    }
+    else
+    {
+        <div class="rn-grid rn-grid-2">
+            @foreach (var item in _data.Items)
+            {
+                <article class="rn-card tight rn-flex" style="align-items:flex-start" @key="item.Book.Id">
+                    <a href="@("books/" + item.Book.Id)" aria-hidden="true" tabindex="-1">
+                        <BookCover Title="@item.Book.Title" Author="@(item.Book.Authors.Count > 0 ? item.Book.Authors[0] : null)" Url="@item.Book.CoverUrl" Size="sm" />
+                    </a>
+                    <div style="min-width:0">
+                        <a class="rn-list-title" href="@("books/" + item.Book.Id)">@item.Book.Title</a>
+                        <div class="rn-subtle">@string.Join(", ", item.Book.Authors)</div>
+                        <p class="rn-muted mt-2 rn-mb-0"><Icon Name="sparkles" /> @item.Reason</p>
+                        <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm mt-2" disabled="@IsBusy" @onclick="() => AddLocalAsync(item)"><Icon Name="plus" /> Want to read</button>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+
+    @if (_data.Topics.Genres.Count > 0 || _data.Topics.Authors.Count > 0)
+    {
+        <section class="rn-section">
+            <div class="rn-section-header"><h2>Explore the wider catalogue</h2></div>
+            <p class="rn-subtle">Searches of Google Books / Open Library based on your favourite genres and authors. Books already in your library are hidden.</p>
+            @foreach (var topic in _topics)
+            {
+                <div class="rn-card tight mb-3" @key="topic.Label">
+                    <div class="rn-flex rn-between mb-2">
+                        <strong>@topic.Label</strong>
+                        <a class="rn-subtle" href="@topic.Href">See all</a>
+                    </div>
+                    @if (topic.Error is not null)
+                    {
+                        <p class="rn-subtle rn-mb-0">@topic.Error</p>
+                    }
+                    else if (topic.Books is null)
+                    {
+                        <LoadingIndicator />
+                    }
+                    else if (topic.Books.Count == 0)
+                    {
+                        <p class="rn-subtle rn-mb-0">Nothing new found here — you may already have the popular titles.</p>
+                    }
+                    else
+                    {
+                        <div class="rn-book-grid">
+                            @foreach (var book in topic.Books)
+                            {
+                                <article class="rn-book-card" @key="book.ExternalId">
+                                    <a class="rn-book-card-link" href="@("explore/" + book.Provider + "/" + Uri.EscapeDataString(book.ExternalId))">
+                                        <BookCover Title="@book.Title" Author="@(book.Authors.Count > 0 ? book.Authors[0] : null)" Url="@book.CoverUrl" Size="fill" />
+                                        <span class="rn-book-title">@book.Title</span>
+                                    </a>
+                                    <span class="rn-book-author">@string.Join(", ", book.Authors)</span>
+                                </article>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+    }
+}
+
+@code {
+    private sealed class Topic(string label, string href, CatalogSearchRequest request)
+    {
+        public string Label { get; } = label;
+
+        public string Href { get; } = href;
+
+        public CatalogSearchRequest Request { get; } = request;
+
+        public IReadOnlyList<CatalogBook>? Books { get; set; }
+
+        public string? Error { get; set; }
+    }
+
+    private Guid _userId;
+    private RecommendationsDto? _data;
+    private string? _error;
+    private readonly List<Topic> _topics = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = await RequireUserIdAsync();
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _error = await LoadAsync(async () => _data = await RecommendationService.GetRecommendationsAsync(_userId, 12, ComponentToken));
+        if (_data is null)
+        {
+            return;
+        }
+
+        _topics.Clear();
+        foreach (var genre in _data.Topics.Genres.Take(2))
+        {
+            _topics.Add(new Topic($"Because you enjoy {genre}", "explore?field=Subject&q=" + Uri.EscapeDataString(genre), new CatalogSearchRequest(genre, CatalogSearchField.Subject, 1, 12)));
+        }
+
+        foreach (var author in _data.Topics.Authors.Take(2))
+        {
+            _topics.Add(new Topic($"More by {author}", "explore?field=Author&q=" + Uri.EscapeDataString(author), new CatalogSearchRequest(author, CatalogSearchField.Author, 1, 12)));
+        }
+
+        StateHasChanged();
+        foreach (var topic in _topics)
+        {
+            await LoadTopicAsync(topic);
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadTopicAsync(Topic topic)
+    {
+        try
+        {
+            var result = await Catalog.SearchAsync(topic.Request, ComponentToken);
+            var keys = result.Items.Select(b => new CatalogMatchKey(b.Provider, b.ExternalId, b.Isbn13)).ToList();
+            var owned = await Library.GetCatalogMatchesAsync(_userId, keys, ComponentToken);
+            topic.Books = result.Items.Where(b => !owned.ContainsKey(b.ExternalId)).Take(6).ToList();
+        }
+        catch (Exception ex) when (Describe(ex) is { } message)
+        {
+            topic.Error = message;
+        }
+    }
+
+    private async Task AddLocalAsync(RecommendationDto item)
+    {
+        if (await RunAsync(() => Library.AddBookAsync(_userId, new AddToLibraryRequest(item.Book.Id, ReadingStatus.WantToRead), ComponentToken), $"Added “{item.Book.Title}” to Want to Read."))
+        {
+            _data = _data! with { Items = _data.Items.Where(i => i.Book.Id != item.Book.Id).ToList() };
+        }
+    }
+}

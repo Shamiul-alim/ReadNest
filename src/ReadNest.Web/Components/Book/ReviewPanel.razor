@@ -1,0 +1,98 @@
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Library
+@using ReadNest.Application.Reviews
+@inject ReviewService Reviews
+
+<section class="rn-card" aria-labelledby="review-heading">
+    <h2 class="rn-card-title" id="review-heading"><Icon Name="star" /> Rating &amp; review</h2>
+
+    <div class="rn-field mb-3">
+        <span class="rn-label" id="rating-label">Your rating</span>
+        <StarInput Value="Entry.Rating" ValueChanged="SaveRatingAsync" Label="Your rating" Disabled="IsBusy" />
+    </div>
+
+    <EditForm Model="_form" OnValidSubmit="SaveReviewAsync" class="rn-form">
+        <DataAnnotationsValidator />
+        <div class="rn-field">
+            <label class="rn-label" for="review-text">Review</label>
+            <InputTextArea id="review-text" class="rn-textarea" @bind-Value="_form.Text" maxlength="5000" placeholder="What did you think? What stayed with you?" />
+            <span class="rn-hint">@((_form.Text?.Length ?? 0).ToString("N0")) / 5,000 characters</span>
+            <ValidationMessage For="() => _form.Text" />
+        </div>
+        @if (Reviews.PublicReviewsEnabled)
+        {
+            <fieldset class="rn-field">
+                <legend class="rn-label">Visibility</legend>
+                <InputRadioGroup @bind-Value="_form.Visibility">
+                    <label class="rn-check"><InputRadio Value="ReviewVisibility.Private" /> <span><Icon Name="lock" /> Private — only you can read it</span></label>
+                    <label class="rn-check"><InputRadio Value="ReviewVisibility.Public" /> <span><Icon Name="globe" /> Public — shown on the book page with your display name</span></label>
+                </InputRadioGroup>
+            </fieldset>
+        }
+        <div class="rn-form-actions">
+            @if (Entry.Review is not null)
+            {
+                <button type="button" class="rn-btn rn-btn-danger-ghost" disabled="@IsBusy" @onclick="DeleteReviewAsync"><Icon Name="trash" /> Delete review</button>
+            }
+            <button type="submit" class="rn-btn rn-btn-primary" disabled="@IsBusy">Save review</button>
+        </div>
+    </EditForm>
+    @if (Entry.ReviewUpdatedAtUtc is { } updated)
+    {
+        <p class="rn-hint mt-2 rn-mb-0">
+            Last saved @updated.ToString("d MMM yyyy") · currently @(Entry.ReviewVisibility == ReviewVisibility.Public ? "public" : "private")
+        </p>
+    }
+</section>
+
+<ConfirmDialog @ref="_confirm" />
+
+@code {
+    [Parameter, EditorRequired] public Guid UserId { get; set; }
+    [Parameter, EditorRequired] public LibraryEntryDetailsDto Entry { get; set; } = default!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private ReviewFormModel _form = new();
+    private ConfirmDialog _confirm = default!;
+    private Guid _loadedFor;
+    private DateTime? _loadedReviewVersion;
+
+    protected override void OnParametersSet()
+    {
+        if (_loadedFor != Entry.Id || _loadedReviewVersion != Entry.ReviewUpdatedAtUtc)
+        {
+            _loadedFor = Entry.Id;
+            _loadedReviewVersion = Entry.ReviewUpdatedAtUtc;
+            _form = new ReviewFormModel { Rating = Entry.Rating, Text = Entry.Review, Visibility = Entry.ReviewVisibility };
+        }
+    }
+
+    private async Task SaveRatingAsync(int? rating)
+    {
+        if (await RunAsync(() => Reviews.SetRatingAsync(UserId, Entry.Id, rating, ComponentToken), rating is null ? "Rating cleared." : "Rating saved."))
+        {
+            await OnChanged.InvokeAsync();
+        }
+    }
+
+    private async Task SaveReviewAsync()
+    {
+        var request = new ReviewRequest(Entry.Rating, _form.Text, _form.Visibility);
+        if (await RunAsync(() => Reviews.SaveReviewAsync(UserId, Entry.Id, request, ComponentToken),
+                _form.Visibility == ReviewVisibility.Public && !string.IsNullOrWhiteSpace(_form.Text) ? "Review published." : "Review saved."))
+        {
+            await OnChanged.InvokeAsync();
+        }
+    }
+
+    private async Task DeleteReviewAsync()
+    {
+        if (await _confirm.ConfirmAsync("Delete review?", "Your written review will be deleted. Your star rating is kept.", "Delete review")
+            && await RunAsync(() => Reviews.DeleteReviewAsync(UserId, Entry.Id, ComponentToken), "Review deleted."))
+        {
+            _form.Text = null;
+            _form.Visibility = ReviewVisibility.Private;
+            await OnChanged.InvokeAsync();
+        }
+    }
+}

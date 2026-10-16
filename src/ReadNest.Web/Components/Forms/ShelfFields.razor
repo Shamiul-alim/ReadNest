@@ -1,0 +1,28 @@
+<EditForm Model="Model" OnValidSubmit="OnValidSubmit" class="rn-form">
+    <DataAnnotationsValidator />
+    <div class="rn-field">
+        <label class="rn-label" for="shelf-name">Name</label>
+        <InputText id="shelf-name" class="rn-input" @bind-Value="Model.Name" maxlength="80" />
+        <ValidationMessage For="() => Model.Name" />
+    </div>
+    <div class="rn-field">
+        <label class="rn-label" for="shelf-description">Description <span class="rn-hint">(optional)</span></label>
+        <InputTextArea id="shelf-description" class="rn-textarea" @bind-Value="Model.Description" maxlength="500" />
+        <ValidationMessage For="() => Model.Description" />
+    </div>
+    <label class="rn-check">
+        <InputCheckbox @bind-Value="Model.IsPublic" />
+        <span>Public — anyone with the share link can see the titles, statuses and ratings on this shelf (never your notes).</span>
+    </label>
+    <div class="rn-form-actions">
+        <button type="button" class="rn-btn rn-btn-secondary" @onclick="OnCancel">Cancel</button>
+        <button type="submit" class="rn-btn rn-btn-primary" disabled="@Busy">Save shelf</button>
+    </div>
+</EditForm>
+
+@code {
+    [Parameter, EditorRequired] public ShelfFormModel Model { get; set; } = default!;
+    [Parameter] public EventCallback OnValidSubmit { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public bool Busy { get; set; }
+}
