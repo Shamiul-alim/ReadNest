@@ -1,0 +1,50 @@
+@using ReadNest.Application.Social
+@* A reading challenge: goal, dates and, once joined, the reader's own progress. No leaderboard counts. *@
+<div class="rn-card" style="gap:12px; padding:22px" @key="Challenge.Id">
+    <div style="display:flex; justify-content:space-between; gap:10px">
+        <a class="rn-heading" style="font-size:20px; line-height:1.2; color:var(--color-text); text-decoration:none; overflow-wrap:anywhere" href="@("challenges/" + Challenge.Id)">@Challenge.Title</a>
+        <span style="flex:none; color:var(--color-accent-2-800)"><Icon Name="flag" /></span>
+    </div>
+    <span style="font-size:15px; line-height:1.55">@(string.IsNullOrWhiteSpace(Challenge.Description) ? "Finish " + Formats.Count(Challenge.TargetBooks, "book") + " between " + Formats.Short(Challenge.StartsOn, Today) + " and " + Formats.Short(Challenge.EndsOn, Today) + "." : Challenge.Description)</span>
+    @if (Challenge.IsParticipant)
+    {
+        var done = Math.Min(MyBooks ?? 0, Challenge.TargetBooks);
+        <div style="display:flex; flex-direction:column; gap:6px">
+            <div style="display:flex; justify-content:space-between; gap:10px; font-size:14px; font-weight:700">
+                <span>@(MyBooks is { } m ? m + " of " + Challenge.TargetBooks : "You’re in")</span>
+                <span style="font-weight:500; color:var(--color-neutral-700)">@EndsText</span>
+            </div>
+            <ProgressBar CurrentPage="done" TotalPages="Challenge.TargetBooks" ShowLabel="false" Size="md" Label="@("Progress in " + Challenge.Title)" />
+            @if (!Challenge.IsPublic)
+            {
+                <span class="rn-subtle"><Icon Name="lock" Size="14" /> Private challenge</span>
+            }
+        </div>
+    }
+    else
+    {
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap">
+            <span class="rn-subtle">@EndsText</span>
+            @if (OnJoin is not null && Today <= Challenge.EndsOn)
+            {
+                <button type="button" class="rn-btn rn-btn-primary rn-btn-sm" disabled="@Busy" @onclick="() => OnJoin!()">Join challenge</button>
+            }
+            else
+            {
+                <a class="rn-btn rn-btn-ghost rn-btn-sm" href="@("challenges/" + Challenge.Id)">View</a>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ChallengeSummaryDto Challenge { get; set; } = default!;
+    [Parameter] public DateOnly Today { get; set; }
+    [Parameter] public int? MyBooks { get; set; }
+    [Parameter] public Func<Task>? OnJoin { get; set; }
+    [Parameter] public bool Busy { get; set; }
+
+    private string EndsText => Today < Challenge.StartsOn
+        ? "Starts " + Formats.Short(Challenge.StartsOn, Today)
+        : Today > Challenge.EndsOn ? "Ended " + Formats.Short(Challenge.EndsOn, Today) : "Ends " + Formats.Short(Challenge.EndsOn, Today);
+}

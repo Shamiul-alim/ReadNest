@@ -1,19 +1,26 @@
 using Microsoft.EntityFrameworkCore;
 using ReadNest.Application.Abstractions;
 using ReadNest.Application.Books;
+using ReadNest.Application.Common;
 using ReadNest.Application.DTOs;
+using ReadNest.Domain.Entities;
 using ReadNest.Domain.Enums;
 
 namespace ReadNest.Application.Recommendations;
 
-public sealed record RecommendationDto(BookSummaryDto Book, string Reason, double Score);
+/// <summary>A suggestion with the reason it is there. <see cref="Basis"/> says whether an author or a subject drove it.</summary>
+public sealed record RecommendationDto(BookSummaryDto Book, string Reason, double Score, ReasonKind Basis);
 
 /// <summary>Authors and genres the reader likes most; used to suggest external catalogue searches.</summary>
 public sealed record DiscoveryTopicsDto(IReadOnlyList<string> Authors, IReadOnlyList<string> Genres);
 
-public sealed record RecommendationsDto(IReadOnlyList<RecommendationDto> Items, DiscoveryTopicsDto Topics, int SignalCount);
+public sealed record RecommendationsDto(IReadOnlyList<RecommendationDto> Items, DiscoveryTopicsDto Topics, int SignalCount, int DismissedCount = 0);
 
-public sealed class RecommendationService(IReadNestDbContextFactory dbFactory)
+/// <summary>
+/// Rule-based suggestions from the reader's own library. Books the reader marked "Not for me" are left out until
+/// they restore their dismissed suggestions.
+/// </summary>
+public sealed class RecommendationService(IReadNestDbContextFactory dbFactory, UserClock clock)
 {
     public const int MaxCandidates = 400;
 
@@ -34,10 +41,15 @@ public sealed class RecommendationService(IReadNestDbContextFactory dbFactory)
                 ub.IsFavorite))
             .ToListAsync(cancellationToken);
 
+        var dismissed = await db.RecommendationDismissals.AsNoTracking()
+            .Where(d => d.UserId == userId)
+            .Select(d => d.BookId)
+            .ToListAsync(cancellationToken);
+
         var profile = RecommendationEngine.BuildProfile(entries);
         if (profile.IsEmpty)
         {
-            return new RecommendationsDto([], new DiscoveryTopicsDto([], []), entries.Count);
+            return new RecommendationsDto([], new DiscoveryTopicsDto([], []), entries.Count, dismissed.Count);
         }
 
         var likedAuthors = profile.AuthorWeights.Where(kv => kv.Value > 0).OrderByDescending(kv => kv.Value).Select(kv => kv.Key).Take(50).ToList();
@@ -45,7 +57,14 @@ public sealed class RecommendationService(IReadNestDbContextFactory dbFactory)
 
         var candidates = await db.Books.AsNoTracking()
             .Where(b => b.Origin == BookOrigin.Catalog)
-            .Where(b => !db.UserBooks.Any(ub => ub.UserId == userId && ub.BookId == b.Id))
+            // Also skip other records of a book the reader already has: the same ISBN, or another edition (same title
+            // and a shared author), e.g. a manual record imported from a CSV.
+            .Where(b => !db.UserBooks.Any(ub => ub.UserId == userId
+                && (ub.BookId == b.Id
+                    || (b.Isbn13 != null && ub.Book.Isbn13 == b.Isbn13)
+                    || (ub.Book.NormalizedTitle == b.NormalizedTitle
+                        && ub.Book.Authors.Any(a => b.Authors.Any(x => x.Author.NormalizedName == a.Author.NormalizedName))))))
+            .Where(b => !db.RecommendationDismissals.Any(d => d.UserId == userId && d.BookId == b.Id))
             .Where(b => b.Authors.Any(a => likedAuthors.Contains(a.AuthorId)) || b.Genres.Any(g => likedGenres.Contains(g.GenreId)))
             .OrderBy(b => b.Id)
             .Take(MaxCandidates)
@@ -56,7 +75,7 @@ public sealed class RecommendationService(IReadNestDbContextFactory dbFactory)
                 db.UserBooks.Count(ub => ub.BookId == b.Id && (ub.Rating >= 4 || ub.Status == ReadingStatus.Read))))
             .ToListAsync(cancellationToken);
 
-        var ranked = RecommendationEngine.Rank(profile, candidates, new HashSet<Guid>(), take);
+        var ranked = RecommendationEngine.Rank(profile, candidates, dismissed.ToHashSet(), take);
         var bookIds = ranked.Select(r => r.BookId).ToList();
         var books = await db.Books.AsNoTracking().Where(b => bookIds.Contains(b.Id)).Select(BookProjections.Summary).ToDictionaryAsync(b => b.Id, cancellationToken);
 
@@ -67,14 +86,58 @@ public sealed class RecommendationService(IReadNestDbContextFactory dbFactory)
 
         var items = ranked
             .Where(r => books.ContainsKey(r.BookId))
-            .Select(r => new RecommendationDto(books[r.BookId], ExplainReason(r, authorNames, genreNames), r.Score))
+            .Select(r => new RecommendationDto(books[r.BookId], ExplainReason(r, authorNames, genreNames), r.Score, r.Reason))
             .ToList();
 
         var topics = new DiscoveryTopicsDto(
             likedAuthors.Take(3).Where(authorNames.ContainsKey).Select(id => authorNames[id]).ToList(),
             likedGenres.Take(3).Where(genreNames.ContainsKey).Select(id => genreNames[id]).ToList());
 
-        return new RecommendationsDto(items, topics, entries.Count);
+        return new RecommendationsDto(items, topics, entries.Count, dismissed.Count);
+    }
+
+    /// <summary>Hides a suggestion from this reader. Idempotent.</summary>
+    public async Task DismissAsync(Guid userId, Guid bookId, CancellationToken cancellationToken)
+    {
+        await using var db = await dbFactory.CreateAsync(cancellationToken);
+        if (!await db.Books.AnyAsync(b => b.Id == bookId && b.Origin == BookOrigin.Catalog, cancellationToken))
+        {
+            throw new NotFoundException("That book was not found.");
+        }
+
+        if (await db.RecommendationDismissals.AnyAsync(d => d.UserId == userId && d.BookId == bookId, cancellationToken))
+        {
+            return;
+        }
+
+        db.RecommendationDismissals.Add(RecommendationDismissal.Create(userId, bookId, clock.UtcNow));
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (db.IsUniqueViolation(ex))
+        {
+            // Dismissed twice at once: the outcome is the same.
+        }
+    }
+
+    /// <summary>Brings back one dismissed suggestion (used by Undo).</summary>
+    public async Task RestoreAsync(Guid userId, Guid bookId, CancellationToken cancellationToken)
+    {
+        await using var db = await dbFactory.CreateAsync(cancellationToken);
+        var dismissal = await db.RecommendationDismissals.FirstOrDefaultAsync(d => d.UserId == userId && d.BookId == bookId, cancellationToken);
+        if (dismissal is not null)
+        {
+            db.RecommendationDismissals.Remove(dismissal);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    /// <summary>Brings back every dismissed suggestion. Returns how many were restored.</summary>
+    public async Task<int> RestoreAllAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        await using var db = await dbFactory.CreateAsync(cancellationToken);
+        return await db.RecommendationDismissals.Where(d => d.UserId == userId).ExecuteDeleteAsync(cancellationToken);
     }
 
     internal static string ExplainReason(ScoredCandidate candidate, IReadOnlyDictionary<Guid, string> authors, IReadOnlyDictionary<Guid, string> genres) =>

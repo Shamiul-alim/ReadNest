@@ -108,6 +108,19 @@ internal static class PersonalEndpoints
             .WithTags("Recommendations")
             .WithSummary("Rule-based recommendations with an explanation for each book.");
 
+        api.MapPost("/recommendations/{bookId:guid}/dismiss", async Task<NoContent> (Guid bookId, ClaimsPrincipal user, RecommendationService service, CancellationToken ct) =>
+            {
+                await service.DismissAsync(user.GetRequiredUserId(), bookId, ct);
+                return TypedResults.NoContent();
+            })
+            .WithTags("Recommendations")
+            .WithSummary("Mark a suggestion as \"Not for me\" so it is no longer recommended.");
+
+        api.MapDelete("/recommendations/dismissals", async Task<Ok<int>> (ClaimsPrincipal user, RecommendationService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.RestoreAllAsync(user.GetRequiredUserId(), ct)))
+            .WithTags("Recommendations")
+            .WithSummary("Bring back every dismissed suggestion. Returns how many were restored.");
+
         var data = api.MapGroup(string.Empty).WithTags("Import and export");
 
         data.MapGet("/export/library.csv", async Task<FileContentHttpResult> (ClaimsPrincipal user, ImportExportService service, CancellationToken ct) =>

@@ -1,25 +1,50 @@
 @using ReadNest.Application.Analytics
-<div class="rn-ring @(Goal.Pace == GoalPace.Completed ? "complete" : null)" style="--value:@Goal.PercentComplete.ToString("0.#", CultureInfo.InvariantCulture);--size:@Size"
-     role="img" aria-label="@(Goal.CompletedBooks + " of " + Goal.TargetBooks + " books read")">
-    <div class="rn-ring-inner">
-        <div>
-            <div class="rn-ring-value">@Goal.CompletedBooks<span class="rn-subtle">/@Goal.TargetBooks</span></div>
-            <div class="rn-ring-caption">books</div>
+@* SVG goal ring: sage-600 on sage-200 with the count in the centre. *@
+<div class="rn-ring @(OnSage ? "on-sage" : null)" style="width:@Size; height:@Size">
+    <svg viewBox="0 0 220 220" role="img" aria-label="@(Goal.CompletedBooks + " of " + Goal.TargetBooks + " books read")">
+        <circle class="track" cx="110" cy="110" r="88" stroke-width="@Stroke"></circle>
+        <circle class="value" cx="110" cy="110" r="88" stroke-width="@Stroke" transform="rotate(-90 110 110)" stroke-dasharray="@Dash"></circle>
+    </svg>
+    @if (ShowCenter)
+    {
+        <div class="rn-ring-center">
+            <span class="rn-ring-value" style="font-size:@ValueSize">@Goal.CompletedBooks</span>
+            <span class="rn-ring-caption">of @Goal.TargetBooks books</span>
         </div>
-    </div>
+    }
 </div>
 
 @code {
-    [Parameter, EditorRequired] public GoalProgressDto Goal { get; set; } = default!;
-    [Parameter] public string Size { get; set; } = "128px";
+    private const double Circumference = 2 * Math.PI * 88;
 
-    public static string PaceText(GoalProgressDto goal) => goal.Pace switch
+    [Parameter, EditorRequired] public GoalProgressDto Goal { get; set; } = default!;
+    [Parameter] public string Size { get; set; } = "clamp(200px, 26vw, 260px)";
+    [Parameter] public bool ShowCenter { get; set; } = true;
+    [Parameter] public bool OnSage { get; set; }
+    [Parameter] public int Stroke { get; set; } = 20;
+    [Parameter] public string ValueSize { get; set; } = "clamp(52px, 6vw, 68px)";
+
+    private string Dash
     {
-        GoalPace.Completed => "Goal reached — wonderful!",
-        GoalPace.Ahead => "Ahead of schedule",
-        GoalPace.OnTrack => "On track",
-        GoalPace.Behind => goal.ExpectedByToday - goal.CompletedBooks == 1 ? "1 book behind schedule" : (goal.ExpectedByToday - goal.CompletedBooks) + " books behind schedule",
-        GoalPace.NotStarted => "This goal starts later",
-        _ => "No goal set",
-    };
+        get
+        {
+            var fraction = Goal.TargetBooks > 0 ? Math.Clamp((double)Goal.CompletedBooks / Goal.TargetBooks, 0, 1) : 0;
+            var filled = Circumference * fraction;
+            return filled.ToString("0.##", CultureInfo.InvariantCulture) + " " + Circumference.ToString("0.##", CultureInfo.InvariantCulture);
+        }
+    }
+
+    public static string PaceText(GoalProgressDto goal)
+    {
+        var ahead = goal.CompletedBooks - goal.ExpectedByToday;
+        return goal.Pace switch
+        {
+            GoalPace.Completed => "Goal reached",
+            GoalPace.Ahead => ahead == 1 ? "1 book ahead of pace" : ahead + " books ahead of pace",
+            GoalPace.OnTrack => "Right on pace",
+            GoalPace.Behind => -ahead == 1 ? "1 book behind pace" : -ahead + " books behind pace",
+            GoalPace.NotStarted => "This goal starts later",
+            _ => "No goal set",
+        };
+    }
 }

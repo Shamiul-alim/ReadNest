@@ -7,6 +7,8 @@
 
 <AppTitle Text="My reviews" />
 
+
+<div class="rn-page tight">
 <PageHeader Title="My ratings &amp; reviews" Description="All the books you've rated or reviewed. Private reviews are visible only to you." />
 
 @if (_error is not null)
@@ -68,6 +70,7 @@ else
     </div>
     <Pager Page="_page.Page" TotalPages="_page.TotalPages" TotalCount="_page.TotalCount" ItemName="reviews" OnPageChanged="GoToPageAsync" />
 }
+</div>
 
 @code {
     private Guid _userId;

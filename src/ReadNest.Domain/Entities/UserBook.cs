@@ -184,6 +184,17 @@ public sealed class UserBook : Entity
         UpdatedAtUtc = nowUtc;
     }
 
+    /// <summary>
+    /// Sets the bookmark from imported data. Unlike <see cref="UpdateProgress"/> this records no reading activity:
+    /// the status and the last-read date are left alone.
+    /// </summary>
+    public void SetImportedPosition(int currentPage, DateTime nowUtc)
+    {
+        ValidatePage(currentPage, "currentPage");
+        CurrentPage = currentPage;
+        UpdatedAtUtc = nowUtc;
+    }
+
     /// <summary>Synchronises the reading position after a reading session was recorded or edited.</summary>
     internal void ApplySessionProgress(int endPage, DateOnly readOn, DateTime nowUtc)
     {

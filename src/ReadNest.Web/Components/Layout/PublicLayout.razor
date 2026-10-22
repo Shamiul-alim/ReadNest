@@ -1,30 +1,53 @@
 @inherits LayoutComponentBase
 
 <a class="rn-skip-link visually-hidden-focusable" href="#main-content">Skip to main content</a>
-<header class="rn-public-nav">
-    <a class="rn-brand ps-0" href="">
-        <span class="rn-brand-mark"><Icon Name="book" /></span>
-        <span class="rn-brand-name">ReadNest</span>
-    </a>
-    <nav aria-label="Main">
-        <a href="explore" class="hide-sm">Explore books</a>
-        <a href="community" class="hide-sm">Community</a>
+<div class="rn-public">
+    <header class="rn-public-nav">
+        <a class="rn-brand" href="" aria-label="ReadNest home">
+            <Logo Size="36" />
+            <span class="rn-brand-name" style="font-size:24px">ReadNest</span>
+        </a>
+        <div class="grow"></div>
+        <nav aria-label="Site" class="rn-hide-mobile">
+            <a href="explore">Discover books</a>
+            <a href="#how">How it works</a>
+            <AuthorizeView>
+                <NotAuthorized>
+                    <a href="Account/Login">Sign in</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </nav>
         <AuthorizeView>
             <Authorized>
-                <a class="rn-btn rn-btn-primary" href="dashboard">Open my dashboard</a>
+                <a class="rn-btn rn-btn-primary" href="dashboard">Open my library</a>
             </Authorized>
             <NotAuthorized>
-                <a href="Account/Login">Log in</a>
-                <a class="rn-btn rn-btn-primary" href="Account/Register">Sign up free</a>
+                <a class="rn-btn rn-btn-ghost rn-only-mobile" href="Account/Login">Sign in</a>
+                <a class="rn-btn rn-btn-primary" href="Account/Register">Start your library</a>
             </NotAuthorized>
         </AuthorizeView>
-    </nav>
-</header>
-<main id="main-content">
-    @Body
-</main>
-<footer class="rn-footer">
-    ReadNest · A personal library and reading tracker · Book data courtesy of
-    <a href="https://books.google.com" rel="noopener noreferrer" target="_blank">Google Books</a> and
-    <a href="https://openlibrary.org" rel="noopener noreferrer" target="_blank">Open Library</a>.
-</footer>
+        <button type="button" class="rn-btn rn-btn-icon" data-theme-toggle aria-label="Switch theme">
+            <span data-theme-icon="dark"><Icon Name="moon" /></span><span data-theme-icon="light" hidden><Icon Name="sun" /></span>
+        </button>
+    </header>
+    <main id="main-content" tabindex="-1">
+        @Body
+    </main>
+    <footer class="rn-wrap rn-footer">
+        <span class="rn-brand" style="gap:8px"><span class="rn-brand-name" style="font-size:19px">ReadNest</span></span>
+        <span>Book data from Open Library and Google Books.</span>
+        <div class="grow"></div>
+        <nav aria-label="Footer">
+            <a href="explore">Discover books</a>
+            <a href="community">Community</a>
+            <a href="challenges">Challenges</a>
+        </nav>
+        <span>© @DateTime.UtcNow.Year ReadNest</span>
+    </footer>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    Something went wrong. Your books are safe.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss" role="button" aria-label="Dismiss">✕</span>
+</div>

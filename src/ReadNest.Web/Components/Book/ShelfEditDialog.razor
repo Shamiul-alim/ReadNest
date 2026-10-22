@@ -1,0 +1,111 @@
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Library
+@inject ShelfService Shelves
+
+@* Create or edit a shelf: name (required), optional description, private or public. *@
+<Modal Title="@(Shelf is null ? "New shelf" : "Edit shelf")" Open="Open" OpenChanged="OnOpenChanged">
+    <ChildContent>
+        <form id="@_formId" @onsubmit="SaveAsync" @onsubmit:preventDefault novalidate style="display:flex; flex-direction:column; gap:16px">
+            <div class="rn-field">
+                <label class="rn-label" for="@(_formId + "-name")">Name</label>
+                <input id="@(_formId + "-name")" data-autofocus class="rn-input @(_attempted && NameError is not null ? "invalid" : null)" maxlength="80"
+                       placeholder="e.g. Research, Book club, Comfort reads" @bind="_name" @bind:event="oninput" aria-invalid="@(_attempted && NameError is not null ? "true" : "false")" />
+                @if (_attempted && NameError is { } error)
+                {
+                    <span class="rn-error-text" role="alert"><Icon Name="alert" />@error</span>
+                }
+            </div>
+            <div class="rn-field">
+                <label class="rn-label" for="@(_formId + "-desc")">Description <span class="optional">(optional)</span></label>
+                <textarea id="@(_formId + "-desc")" class="rn-textarea" maxlength="500" style="min-height:80px; font-size:15px" @bind="_description" @bind:event="oninput"></textarea>
+            </div>
+            <div role="radiogroup" aria-label="Visibility" style="display:flex; flex-direction:column; gap:10px">
+                <label class="rn-radio"><input type="radio" name="@(_formId + "-vis")" checked="@(!_public)" @onchange="() => _public = false" /><span class="dot"></span>Private, just for me</label>
+                <label class="rn-radio"><input type="radio" name="@(_formId + "-vis")" checked="@_public" @onchange="() => _public = true" /><span class="dot"></span>Public, with a share link and on my profile</label>
+            </div>
+            @if (_public)
+            {
+                <span class="rn-hint">Public shelves show titles, statuses and ratings. Your notes and reviews stay private.</span>
+            }
+        </form>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="rn-btn rn-btn-secondary" @onclick="CloseAsync">Cancel</button>
+        <button type="submit" form="@_formId" class="rn-btn rn-btn-primary" disabled="@IsBusy">@(Shelf is null ? "Create shelf" : "Save changes")</button>
+    </Footer>
+</Modal>
+
+@code {
+    private readonly string _formId = "shelf-" + Guid.NewGuid().ToString("N")[..8];
+    private string _name = "";
+    private string? _description;
+    private bool _public;
+    private bool _attempted;
+    private bool _wasOpen;
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter, EditorRequired] public Guid UserId { get; set; }
+
+    /// <summary>The shelf being edited, or null to create one.</summary>
+    [Parameter] public ShelfDto? Shelf { get; set; }
+
+    /// <summary>Raised with the shelf's id after a save.</summary>
+    [Parameter] public EventCallback<Guid> OnSaved { get; set; }
+
+    private string? NameError => string.IsNullOrWhiteSpace(_name) ? "Give the shelf a name." : null;
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen)
+        {
+            _wasOpen = true;
+            _attempted = false;
+            _name = Shelf?.Name ?? "";
+            _description = Shelf?.Description;
+            _public = Shelf?.IsPublic ?? false;
+        }
+        else if (!Open)
+        {
+            _wasOpen = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _attempted = true;
+        if (NameError is not null)
+        {
+            return;
+        }
+
+        var request = new ShelfRequest(_name.Trim(), string.IsNullOrWhiteSpace(_description) ? null : _description.Trim(), _public);
+        var editing = Shelf;
+        var id = editing?.Id ?? Guid.Empty;
+        var ok = await RunAsync(async () =>
+        {
+            if (editing is not null)
+            {
+                await Shelves.UpdateAsync(UserId, editing.Id, request, ComponentToken);
+            }
+            else
+            {
+                id = await Shelves.CreateAsync(UserId, request, ComponentToken);
+            }
+        }, editing is null ? "Created " + request.Name + "." : "Shelf saved.");
+        if (ok)
+        {
+            await CloseAsync();
+            await OnSaved.InvokeAsync(id);
+        }
+    }
+
+    private async Task OnOpenChanged(bool open)
+    {
+        Open = open;
+        _wasOpen = open;
+        await OpenChanged.InvokeAsync(open);
+    }
+
+    private Task CloseAsync() => OnOpenChanged(false);
+}

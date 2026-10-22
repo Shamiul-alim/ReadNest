@@ -5,119 +5,208 @@
 @inject ProfileService Profiles
 @inject LibraryService Library
 
+@* The shell renders statically; the More sheet, account menu, theme switch and recent searches are wired up in
+   wwwroot/js/app.js. Breakpoints: bottom bar below 700px, icon rail from 700px, full sidebar from 1080px. *@
 <a class="rn-skip-link visually-hidden-focusable" href="#main-content">Skip to main content</a>
 
 <div class="rn-shell">
-    <input type="checkbox" id="rn-nav-toggle" class="rn-nav-toggle" tabindex="-1" aria-hidden="true" />
-    <aside class="rn-sidebar" id="rn-sidebar" aria-label="Main navigation">
-        <a class="rn-brand" href="@(_userId is null ? "" : "dashboard")">
-            <span class="rn-brand-mark"><Icon Name="book" /></span>
+    <aside class="rn-sidebar" aria-label="Main navigation">
+        <a class="rn-brand" href="@(_userId is null ? "" : "dashboard")" aria-label="ReadNest home">
+            <Logo />
             <span class="rn-brand-name">ReadNest</span>
         </a>
+        <nav class="rn-nav" aria-label="Main">
+            @if (_userId is not null)
+            {
+                <div class="rn-nav-group">
+                    <NavLink class="rn-nav-link" href="dashboard" Match="NavLinkMatch.All"><Icon Name="home" /><span>Home</span></NavLink>
+                </div>
+                <div class="rn-nav-group">
+                    <div class="rn-nav-heading">Discover</div>
+                    <NavLink class="rn-nav-link" href="explore"><Icon Name="compass" /><span>Discover books</span></NavLink>
+                    <NavLink class="rn-nav-link" href="recommendations"><Icon Name="heart" /><span>For you</span></NavLink>
+                    <NavLink class="rn-nav-link" href="community"><Icon Name="users" /><span>Community</span></NavLink>
+                </div>
+                <div class="rn-nav-group">
+                    <div class="rn-nav-heading">Read</div>
+                    <NavLink class="rn-nav-link" href="library" Match="NavLinkMatch.All"><Icon Name="library" /><span>My library</span><span class="rn-nav-count">@_counts?.Total</span></NavLink>
+                    <NavLink class="rn-nav-link sub" href="library/currently-reading"><span>Reading</span><span class="rn-nav-count">@_counts?.CurrentlyReading</span></NavLink>
+                    <NavLink class="rn-nav-link sub" href="library/want-to-read"><span>Want to read</span><span class="rn-nav-count">@_counts?.WantToRead</span></NavLink>
+                    <NavLink class="rn-nav-link sub" href="library/read"><span>Read</span><span class="rn-nav-count">@_counts?.Read</span></NavLink>
+                    <NavLink class="rn-nav-link" href="shelves"><Icon Name="layers" /><span>Shelves</span></NavLink>
+                    <NavLink class="rn-nav-link" href="collection"><Icon Name="archive" /><span>Collection &amp; loans</span></NavLink>
+                </div>
+                <div class="rn-nav-group">
+                    <div class="rn-nav-heading">Remember</div>
+                    <NavLink class="rn-nav-link" href="notes"><Icon Name="notebook" /><span>Notes &amp; journal</span></NavLink>
+                    <NavLink class="rn-nav-link" href="goals"><Icon Name="target" /><span>Reading goals</span></NavLink>
+                    <NavLink class="rn-nav-link" href="analytics"><Icon Name="chart" /><span>Insights</span></NavLink>
+                </div>
+            }
+            else
+            {
+                <div class="rn-nav-group">
+                    <NavLink class="rn-nav-link" href="" Match="NavLinkMatch.All"><Icon Name="home" /><span>Home</span></NavLink>
+                    <NavLink class="rn-nav-link" href="explore"><Icon Name="compass" /><span>Discover books</span></NavLink>
+                    <NavLink class="rn-nav-link" href="community"><Icon Name="users" /><span>Community</span></NavLink>
+                    <NavLink class="rn-nav-link" href="challenges"><Icon Name="flag" /><span>Challenges</span></NavLink>
+                </div>
+                <div class="rn-nav-group" style="gap:10px; padding:0 4px;">
+                    <a class="rn-btn rn-btn-primary" href="Account/Register">Start your library</a>
+                    <a class="rn-btn rn-btn-secondary" href="Account/Login">Sign in</a>
+                </div>
+            }
+        </nav>
+        <div class="rn-sidebar-foot">
+            <button type="button" class="rn-nav-link" data-theme-toggle>
+                <span data-theme-icon="dark"><Icon Name="moon" /></span><span data-theme-icon="light" hidden><Icon Name="sun" /></span>
+                <span data-theme-label>Lamplight theme</span>
+            </button>
+            @if (_userId is not null)
+            {
+                <NavLink class="rn-nav-link" href="settings"><Icon Name="sliders" /><span>Settings</span></NavLink>
+            }
+        </div>
+    </aside>
 
+    <aside class="rn-rail" aria-label="Main navigation">
+        <a class="rn-brand" href="@(_userId is null ? "" : "dashboard")" aria-label="ReadNest home"><Logo Size="40" /></a>
         @if (_userId is not null)
         {
-            <nav>
-                <div class="rn-nav-section rn-mt-0">
-                    <NavLink class="rn-nav-link" href="dashboard" Match="NavLinkMatch.All"><Icon Name="dashboard" /> Dashboard</NavLink>
-                    <NavLink class="rn-nav-link" href="explore"><Icon Name="compass" /> Explore books</NavLink>
-                    <NavLink class="rn-nav-link" href="recommendations"><Icon Name="sparkles" /> For you</NavLink>
-                </div>
-                <div class="rn-nav-section">
-                    <div class="rn-nav-heading">My library</div>
-                    <NavLink class="rn-nav-link" href="library" Match="NavLinkMatch.All"><Icon Name="library" /> All books <span class="rn-nav-count">@_counts?.Total</span></NavLink>
-                    <NavLink class="rn-nav-link" href="library/want-to-read"><Icon Name="bookmark" /> Want to Read <span class="rn-nav-count">@_counts?.WantToRead</span></NavLink>
-                    <NavLink class="rn-nav-link" href="library/currently-reading"><Icon Name="book" /> Currently Reading <span class="rn-nav-count">@_counts?.CurrentlyReading</span></NavLink>
-                    <NavLink class="rn-nav-link" href="library/read"><Icon Name="check-circle" /> Read <span class="rn-nav-count">@_counts?.Read</span></NavLink>
-                    <NavLink class="rn-nav-link" href="library/paused"><Icon Name="pause" /> Paused &amp; DNF <span class="rn-nav-count">@(_counts is null ? null : _counts.Paused + _counts.DidNotFinish)</span></NavLink>
-                    <NavLink class="rn-nav-link" href="shelves"><Icon Name="layers" /> Custom shelves</NavLink>
-                    <NavLink class="rn-nav-link" href="collection"><Icon Name="archive" /> Collection &amp; loans</NavLink>
-                </div>
-                <div class="rn-nav-section">
-                    <div class="rn-nav-heading">Reading</div>
-                    <NavLink class="rn-nav-link" href="notes"><Icon Name="pen" /> Notes &amp; journal</NavLink>
-                    <NavLink class="rn-nav-link" href="history"><Icon Name="clock" /> Reading history</NavLink>
-                    <NavLink class="rn-nav-link" href="goals"><Icon Name="target" /> Goals</NavLink>
-                    <NavLink class="rn-nav-link" href="analytics"><Icon Name="chart" /> Analytics</NavLink>
-                    <NavLink class="rn-nav-link" href="reviews"><Icon Name="star" /> My reviews</NavLink>
-                </div>
-                <div class="rn-nav-section">
-                    <div class="rn-nav-heading">Community</div>
-                    <NavLink class="rn-nav-link" href="community"><Icon Name="users" /> Readers &amp; reviews</NavLink>
-                    <NavLink class="rn-nav-link" href="challenges"><Icon Name="trophy" /> Challenges</NavLink>
-                </div>
-            </nav>
+            <NavLink class="rn-rail-link" href="dashboard" Match="NavLinkMatch.All"><Icon Name="home" /><span>Home</span></NavLink>
+            <NavLink class="rn-rail-link" href="explore"><Icon Name="compass" /><span>Discover</span></NavLink>
+            <NavLink class="rn-rail-link" href="library"><Icon Name="library" /><span>Library</span></NavLink>
+            <NavLink class="rn-rail-link" href="notes"><Icon Name="notebook" /><span>Journal</span></NavLink>
         }
         else
         {
-            <nav>
-                <div class="rn-nav-section rn-mt-0">
-                    <NavLink class="rn-nav-link" href="" Match="NavLinkMatch.All"><Icon Name="dashboard" /> Home</NavLink>
-                    <NavLink class="rn-nav-link" href="explore"><Icon Name="compass" /> Explore books</NavLink>
-                    <NavLink class="rn-nav-link" href="community"><Icon Name="users" /> Readers &amp; reviews</NavLink>
-                    <NavLink class="rn-nav-link" href="challenges"><Icon Name="trophy" /> Challenges</NavLink>
-                </div>
-                <div class="rn-nav-section">
-                    <a class="rn-btn rn-btn-primary rn-btn-block" href="Account/Register">Create a free account</a>
-                    <a class="rn-btn rn-btn-ghost rn-btn-block mt-2" href="Account/Login">Log in</a>
-                </div>
-            </nav>
+            <NavLink class="rn-rail-link" href="" Match="NavLinkMatch.All"><Icon Name="home" /><span>Home</span></NavLink>
+            <NavLink class="rn-rail-link" href="explore"><Icon Name="compass" /><span>Discover</span></NavLink>
+            <NavLink class="rn-rail-link" href="community"><Icon Name="users" /><span>Community</span></NavLink>
         }
-        <div class="rn-sidebar-footer">Book data from Google Books and Open Library.</div>
+        <button type="button" class="rn-rail-link" data-sheet-open aria-controls="rn-more" aria-expanded="false"><Icon Name="menu" /><span>More</span></button>
+        <div class="rn-rail-spacer"></div>
+        <button type="button" class="rn-btn rn-btn-icon" data-theme-toggle aria-label="Switch theme">
+            <span data-theme-icon="dark"><Icon Name="moon" /></span><span data-theme-icon="light" hidden><Icon Name="sun" /></span>
+        </button>
     </aside>
-    <label for="rn-nav-toggle" class="rn-sidebar-backdrop" aria-hidden="true"></label>
 
     <div class="rn-main">
         <header class="rn-topbar">
-            <button type="button" class="rn-btn rn-btn-ghost rn-btn-icon rn-menu-button" data-nav-toggle aria-controls="rn-sidebar" aria-label="Open navigation menu">
-                <Icon Name="menu" />
-            </button>
-            <form class="rn-topbar-search" action="explore" method="get" role="search">
+            <a class="rn-brand rn-topbar-brand" href="@(_userId is null ? "" : "dashboard")" aria-label="ReadNest home">
+                <Logo Size="32" />
+                <span class="rn-brand-name">ReadNest</span>
+            </a>
+            <form class="rn-topbar-search" action="explore" method="get" role="search" data-search-form>
                 <Icon Name="search" />
-                <input type="search" name="q" maxlength="200" placeholder="Search books by title, author or ISBN…" aria-label="Search the book catalogue" />
+                <input type="search" name="q" maxlength="200" autocomplete="off" placeholder="Search by title, author or ISBN"
+                       aria-label="Search books by title, author or ISBN" data-search-input aria-controls="rn-suggest" />
+                <div class="rn-suggest" id="rn-suggest" data-suggest hidden>
+                    <div class="rn-suggest-heading">Recent searches</div>
+                    <div data-suggest-list></div>
+                </div>
             </form>
-            <div class="rn-topbar-actions">
-                @if (_userId is not null)
-                {
-                    <details class="rn-account">
-                        <summary aria-label="Account menu">
-                            <Avatar Name="@_profile?.DisplayName" ImageUrl="@_profile?.ProfileImageUrl" />
-                            <span class="d-none d-md-inline rn-truncate" style="max-width:140px">@_profile?.DisplayName</span>
-                        </summary>
-                        <div class="rn-account-menu">
-                            <div class="px-2 py-1 rn-subtle">Signed in as <strong>@@@_profile?.Handle</strong></div>
-                            <hr />
-                            <a href="profile"><Icon Name="user" /> Profile</a>
-                            <a href="settings"><Icon Name="settings" /> Settings</a>
-                            <a href="import-export"><Icon Name="download" /> Import &amp; export</a>
-                            <a href="Account/Manage"><Icon Name="lock" /> Account &amp; security</a>
-                            <hr />
-                            <form action="Account/Logout" method="post">
-                                <AntiforgeryToken />
-                                <input type="hidden" name="ReturnUrl" value="" />
-                                <button type="submit"><Icon Name="logout" /> Log out</button>
-                            </form>
+            <div class="rn-topbar-spacer"></div>
+            <a class="rn-btn rn-btn-icon rn-topbar-mobile-search" href="explore" aria-label="Search books"><Icon Name="search" /></a>
+            @if (_userId is not null)
+            {
+                <div class="rn-menu-wrap">
+                    <button type="button" class="rn-avatar-button" aria-label="Account menu" aria-haspopup="true" aria-expanded="false" aria-controls="rn-account-menu" data-menu-toggle>
+                        @if (AvatarUrl is not null)
+                        {
+                            <img src="@AvatarUrl" alt="" referrerpolicy="no-referrer" />
+                        }
+                        else
+                        {
+                            @Initials
+                        }
+                    </button>
+                    <div class="rn-popover" id="rn-account-menu" data-menu hidden>
+                        <div class="rn-popover-head">
+                            <strong>@_profile?.DisplayName</strong>
+                            <span>@@@_profile?.Handle</span>
                         </div>
-                    </details>
-                }
-                else
-                {
-                    <a class="rn-btn rn-btn-ghost" href="Account/Login">Log in</a>
-                    <a class="rn-btn rn-btn-primary" href="Account/Register">Sign up</a>
-                }
-            </div>
+                        <a class="rn-menu-item" href="profile"><Icon Name="user" /><span>Public profile</span></a>
+                        <a class="rn-menu-item" href="settings"><Icon Name="sliders" /><span>Settings</span></a>
+                        <button type="button" class="rn-menu-item" data-theme-toggle>
+                            <span data-theme-icon="dark"><Icon Name="moon" /></span><span data-theme-icon="light" hidden><Icon Name="sun" /></span>
+                            <span data-theme-label>Lamplight theme</span>
+                        </button>
+                        <form class="rn-menu-form" action="Account/Logout" method="post">
+                            <AntiforgeryToken />
+                            <input type="hidden" name="ReturnUrl" value="" />
+                            <button type="submit" class="rn-menu-item"><Icon Name="logout" /><span>Sign out</span></button>
+                        </form>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <a class="rn-btn rn-btn-ghost rn-hide-mobile" href="Account/Login">Sign in</a>
+                <a class="rn-btn rn-btn-primary" href="Account/Register">Start your library</a>
+            }
         </header>
 
-        <main id="main-content" class="rn-content">
+        <main id="main-content" class="rn-content" tabindex="-1">
             @Body
         </main>
+    </div>
+</div>
+
+<nav class="rn-bottombar" aria-label="Main navigation">
+    @if (_userId is not null)
+    {
+        <NavLink href="dashboard" Match="NavLinkMatch.All"><Icon Name="home" /><span>Home</span></NavLink>
+        <NavLink href="explore"><Icon Name="compass" /><span>Discover</span></NavLink>
+        <NavLink href="library"><Icon Name="library" /><span>Library</span></NavLink>
+        <NavLink href="notes"><Icon Name="notebook" /><span>Journal</span></NavLink>
+    }
+    else
+    {
+        <NavLink href="" Match="NavLinkMatch.All"><Icon Name="home" /><span>Home</span></NavLink>
+        <NavLink href="explore"><Icon Name="compass" /><span>Discover</span></NavLink>
+        <NavLink href="community"><Icon Name="users" /><span>Community</span></NavLink>
+        <NavLink href="Account/Login"><Icon Name="user" /><span>Sign in</span></NavLink>
+    }
+    <button type="button" data-sheet-open aria-controls="rn-more" aria-expanded="false"><Icon Name="menu" /><span>More</span></button>
+</nav>
+
+<div class="rn-sheet-backdrop" data-sheet-close hidden></div>
+<div class="rn-sheet" id="rn-more" role="dialog" aria-modal="true" aria-labelledby="rn-more-title" data-sheet hidden>
+    <div class="rn-sheet-head">
+        <span id="rn-more-title">More</span>
+        <button type="button" class="rn-btn rn-btn-icon" aria-label="Close" data-sheet-close><Icon Name="x" /></button>
+    </div>
+    @if (_userId is not null)
+    {
+        <NavLink class="rn-nav-link" href="recommendations"><Icon Name="heart" /><span>For you</span></NavLink>
+        <NavLink class="rn-nav-link" href="shelves"><Icon Name="layers" /><span>Shelves</span></NavLink>
+        <NavLink class="rn-nav-link" href="collection"><Icon Name="archive" /><span>Collection &amp; loans</span></NavLink>
+        <NavLink class="rn-nav-link" href="goals"><Icon Name="target" /><span>Reading goals</span></NavLink>
+        <NavLink class="rn-nav-link" href="analytics"><Icon Name="chart" /><span>Insights</span></NavLink>
+        <NavLink class="rn-nav-link" href="history"><Icon Name="clock" /><span>Reading history</span></NavLink>
+        <NavLink class="rn-nav-link" href="community"><Icon Name="users" /><span>Community</span></NavLink>
+        <NavLink class="rn-nav-link" href="challenges"><Icon Name="flag" /><span>Challenges</span></NavLink>
+        <NavLink class="rn-nav-link" href="profile"><Icon Name="user" /><span>Public profile</span></NavLink>
+        <NavLink class="rn-nav-link" href="settings"><Icon Name="sliders" /><span>Settings</span></NavLink>
+    }
+    else
+    {
+        <NavLink class="rn-nav-link" href="challenges"><Icon Name="flag" /><span>Challenges</span></NavLink>
+        <NavLink class="rn-nav-link" href="Account/Register"><Icon Name="plus" /><span>Create an account</span></NavLink>
+    }
+    <div class="rn-sheet-sep">
+        <button type="button" class="rn-nav-link" data-theme-toggle>
+            <span data-theme-icon="dark"><Icon Name="moon" /></span><span data-theme-icon="light" hidden><Icon Name="sun" /></span>
+            <span data-theme-label>Lamplight theme</span>
+        </button>
     </div>
 </div>
 
 <ToastHost @rendermode="AppRenderMode.Interactive" />
 
 <div id="blazor-error-ui" data-nosnippet>
-    An unexpected error has occurred.
+    Something went wrong. Your books are safe.
     <a href="." class="reload">Reload</a>
     <span class="dismiss" role="button" aria-label="Dismiss">✕</span>
 </div>
@@ -129,6 +218,10 @@
     private Guid? _userId;
     private ProfileDto? _profile;
     private StatusCountsDto? _counts;
+
+    private string? AvatarUrl => InputSanitizer.SafeExternalUrl(_profile?.ProfileImageUrl);
+
+    private string Initials => Avatar.InitialsFor(_profile?.DisplayName);
 
     protected override async Task OnInitializedAsync()
     {

@@ -1,0 +1,239 @@
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Library
+@using ReadNest.Application.Reading
+@inject ReadingSessionService Sessions
+@inject LibraryService Library
+
+@* Log (or edit) a reading session. Validation mirrors ReadingSession: end >= start, within the page count,
+   not in the future, 0-1,440 minutes. The current page advances to the end page if it is further on. *@
+<Modal Title="@(Session is null ? "Log a reading session" : "Edit reading session")" Subtitle="@BookTitle" Open="Open" OpenChanged="OnOpenChanged">
+    <ChildContent>
+        <form id="@_formId" @onsubmit="SaveAsync" @onsubmit:preventDefault novalidate style="display:flex; flex-direction:column; gap:16px">
+            <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px">
+                <div class="rn-field">
+                    <label class="rn-label" for="@(_formId + "-from")">From page</label>
+                    <input id="@(_formId + "-from")" class="rn-input @(FromError is null ? null : "invalid")" type="number" inputmode="numeric" min="0"
+                           style="min-height:52px; font-size:20px" value="@_from" @oninput="e => _from = Parse(e)" aria-invalid="@(FromError is null ? "false" : "true")" />
+                </div>
+                <div class="rn-field">
+                    <label class="rn-label" for="@(_formId + "-to")">To page</label>
+                    <input id="@(_formId + "-to")" data-autofocus class="rn-input @(ToError is null ? null : "invalid")" type="number" inputmode="numeric" min="0" max="@TotalPages"
+                           placeholder="@(TotalPages is { } t ? "e.g. " + Math.Min(t, StartPage + 25) : "e.g. " + (StartPage + 25))"
+                           style="min-height:52px; font-size:20px" value="@_to" @oninput="e => _to = Parse(e)" aria-invalid="@(ToError is null ? "false" : "true")" />
+                </div>
+            </div>
+            @if (_attempted && FromError is not null)
+            {
+                <span class="rn-error-text" role="alert"><Icon Name="alert" />@FromError</span>
+            }
+            @if (_attempted && ToError is not null)
+            {
+                <span class="rn-error-text" role="alert"><Icon Name="alert" />@ToError</span>
+            }
+            <span class="rn-pill-info @(PagesRead > 0 ? null : "neutral")" aria-live="polite"><Icon Name="book-open" />@PagesText</span>
+            <div class="rn-field">
+                <span class="rn-label">How long did you read?</span>
+                <div class="rn-quick" style="align-items:center">
+                    @foreach (var minutes in Durations)
+                    {
+                        <button type="button" aria-pressed="@(_minutes == minutes ? "true" : "false")" @onclick="() => _minutes = minutes">@DurationText(minutes)</button>
+                    }
+                    <label style="display:flex; align-items:center; gap:8px; font-size:14px">
+                        <input class="rn-input @(MinutesError is null ? null : "invalid")" type="number" min="0" max="1440" aria-label="Minutes"
+                               style="width:90px; min-height:40px; font-size:15px; padding:0 12px" value="@_minutes" @oninput="e => _minutes = Parse(e)" />
+                        min
+                    </label>
+                </div>
+            </div>
+            @if (_attempted && MinutesError is not null)
+            {
+                <span class="rn-error-text" role="alert"><Icon Name="alert" />@MinutesError</span>
+            }
+            <div class="rn-field">
+                <label class="rn-label" for="@(_formId + "-date")">Date</label>
+                <input id="@(_formId + "-date")" class="rn-input @(DateError is null ? null : "invalid")" type="date" max="@_today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)"
+                       value="@_date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="OnDateChanged" />
+            </div>
+            @if (_attempted && DateError is not null)
+            {
+                <span class="rn-error-text" role="alert"><Icon Name="alert" />@DateError</span>
+            }
+            <div class="rn-field">
+                <label class="rn-label" for="@(_formId + "-refl")">Reflection <span class="optional">(optional)</span></label>
+                <textarea id="@(_formId + "-refl")" class="rn-textarea" maxlength="2000" style="min-height:84px; font-size:15px"
+                          placeholder="Anything worth remembering from this sitting?" @bind="_reflection" @bind:event="oninput"></textarea>
+            </div>
+        </form>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="rn-btn rn-btn-secondary" @onclick="CloseAsync">Cancel</button>
+        <button type="submit" form="@_formId" class="rn-btn @(_saved ? "rn-btn-sage" : "rn-btn-primary")" disabled="@(IsBusy || _saved)">
+            @if (_saved)
+            {
+                <Icon Name="check" /><span>Session saved</span>
+            }
+            else
+            {
+                <span>@(Session is null ? "Save session" : "Save changes")</span>
+            }
+        </button>
+    </Footer>
+</Modal>
+
+@code {
+    private static readonly int[] Durations = [15, 30, 45, 60, 90];
+    private readonly string _formId = "session-" + Guid.NewGuid().ToString("N")[..8];
+    private int? _from;
+    private int? _to;
+    private int? _minutes;
+    private DateOnly? _date;
+    private DateOnly _today = DateOnly.FromDateTime(DateTime.UtcNow);
+    private string? _reflection;
+    private bool _attempted;
+    private bool _saved;
+    private bool _wasOpen;
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter, EditorRequired] public Guid UserId { get; set; }
+    [Parameter, EditorRequired] public Guid EntryId { get; set; }
+    [Parameter] public string BookTitle { get; set; } = "";
+
+    /// <summary>The page the reader is on; the session starts here by default.</summary>
+    [Parameter] public int StartPage { get; set; }
+    [Parameter] public int? TotalPages { get; set; }
+
+    /// <summary>When set, the dialog edits this session instead of logging a new one.</summary>
+    [Parameter] public ReadingSessionDto? Session { get; set; }
+
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private int PagesRead => _from is { } f && _to is { } t ? Math.Max(0, t - f) : 0;
+
+    private string PagesText => PagesRead switch
+    {
+        0 when _to is null => "Enter the page you stopped on",
+        0 => "0 pages read",
+        1 => "1 page read",
+        var n => n.ToString("N0") + " pages read",
+    };
+
+    private string? FromError => _from switch
+    {
+        null => "Enter the page you started on.",
+        < 0 => "Pages start at 0.",
+        var f when TotalPages is { } total && f > total => $"Page {f:N0} is past the last page ({total:N0}).",
+        _ => null,
+    };
+
+    private string? ToError => _to switch
+    {
+        null => "Enter the page you stopped on.",
+        var t when _from is { } f && t < f => "The end page can’t be before the start page.",
+        var t when TotalPages is { } total && t > total => $"Page {t:N0} is past the last page ({total:N0}).",
+        _ => null,
+    };
+
+    private string? MinutesError => _minutes switch
+    {
+        < 0 => "Minutes can’t be negative.",
+        > 1440 => "A session can be at most 1,440 minutes (24 hours).",
+        _ => null,
+    };
+
+    private string? DateError => _date switch
+    {
+        null => "Choose the day you read.",
+        var d when d > _today => "That date is in the future.",
+        _ => null,
+    };
+
+    private static string DurationText(int minutes) => minutes >= 60 ? (minutes % 60 == 0 ? minutes / 60 + " h" : minutes / 60 + " h " + minutes % 60) : minutes + " min";
+
+    private static int? Parse(ChangeEventArgs e) =>
+        int.TryParse(e.Value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Open && !_wasOpen)
+        {
+            _wasOpen = true;
+            _attempted = false;
+            _saved = false;
+            try
+            {
+                _today = await Library.GetTodayAsync(UserId, ComponentToken);
+            }
+            catch (Exception ex) when (Describe(ex) is not null)
+            {
+                // Keep the UTC date; the server validates the date again on save.
+            }
+
+            if (Session is { } session)
+            {
+                _from = session.StartPage;
+                _to = session.EndPage;
+                _minutes = session.DurationMinutes;
+                _date = session.ReadOn;
+                _reflection = session.Reflection;
+            }
+            else
+            {
+                _from = StartPage;
+                _to = null;
+                _minutes = null;
+                _date = _today;
+                _reflection = null;
+            }
+        }
+        else if (!Open)
+        {
+            _wasOpen = false;
+        }
+    }
+
+    private void OnDateChanged(ChangeEventArgs e) =>
+        _date = DateOnly.TryParseExact(e.Value?.ToString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+
+    private async Task SaveAsync()
+    {
+        _attempted = true;
+        if (FromError is not null || ToError is not null || MinutesError is not null || DateError is not null)
+        {
+            return;
+        }
+
+        var request = new SessionRequest(_date, _from!.Value, _to!.Value, _minutes ?? 0, string.IsNullOrWhiteSpace(_reflection) ? null : _reflection);
+        var editing = Session;
+        var ok = await RunAsync(async () =>
+        {
+            if (editing is not null)
+            {
+                await Sessions.UpdateAsync(UserId, editing.Id, request, ComponentToken);
+            }
+            else
+            {
+                await Sessions.LogAsync(UserId, EntryId, request, ComponentToken);
+            }
+        }, editing is null ? "Session saved · " + PagesText : "Session updated.");
+        if (!ok)
+        {
+            return;
+        }
+
+        _saved = true;
+        StateHasChanged();
+        await Task.Delay(750);
+        await CloseAsync();
+        await OnSaved.InvokeAsync();
+    }
+
+    private async Task OnOpenChanged(bool open)
+    {
+        Open = open;
+        _wasOpen = open;
+        await OpenChanged.InvokeAsync(open);
+    }
+
+    private Task CloseAsync() => OnOpenChanged(false);
+}

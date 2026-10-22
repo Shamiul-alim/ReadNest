@@ -9,113 +9,158 @@
 @inject CatalogService Catalog
 @inject LibraryService Library
 
-<AppTitle Text="Recommended for you" />
+<AppTitle Text="For you" />
 
-<PageHeader Title="Recommended for you"
-            Description="Suggestions are rule-based: they come from the authors and genres of books you finished, rated highly or marked as favourites. Each one explains why it was picked." />
+<div class="rn-page" style="gap:44px">
+    <div style="display:flex; flex-direction:column; gap:8px; max-width:720px">
+        <h1 class="rn-mb-0" tabindex="-1">For you</h1>
+        <p class="rn-lede" style="font-size:16px">Picked from your ratings, the authors you return to and the subjects on your shelves. No popularity scores and no sponsored books, only your own reading. Tell us when something isn’t for you and it won’t come back.</p>
+    </div>
 
-@if (_error is not null)
-{
-    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
-}
-else if (_data is null)
-{
-    <LoadingIndicator Text="Finding books for you…" />
-}
-else
-{
-    @if (_data.Items.Count == 0)
+    @if (_error is not null)
     {
-        <EmptyState Title="Not enough to go on yet" IconName="sparkles"
-                    Text="@(_data.SignalCount == 0
-                        ? "Finish, rate or favourite a few books and we'll suggest more like them."
-                        : "No unread books in ReadNest's catalogue match your favourite authors and genres yet. Try the catalogue searches below or discover more books.")">
-            <a class="rn-btn rn-btn-primary" href="explore">Discover books</a>
-        </EmptyState>
+        <ErrorAlert Message="@_error" Title="We couldn’t gather suggestions" OnRetry="RefreshAsync" />
+    }
+    else if (_data is null)
+    {
+        <LoadingIndicator Kind="rows" Text="Finding books for you…" />
     }
     else
     {
-        <div class="rn-grid rn-grid-2">
-            @foreach (var item in _data.Items)
-            {
-                <article class="rn-card tight rn-flex" style="align-items:flex-start" @key="item.Book.Id">
-                    <a href="@("books/" + item.Book.Id)" aria-hidden="true" tabindex="-1">
-                        <BookCover Title="@item.Book.Title" Author="@(item.Book.Authors.Count > 0 ? item.Book.Authors[0] : null)" Url="@item.Book.CoverUrl" Size="sm" />
-                    </a>
-                    <div style="min-width:0">
-                        <a class="rn-list-title" href="@("books/" + item.Book.Id)">@item.Book.Title</a>
-                        <div class="rn-subtle">@string.Join(", ", item.Book.Authors)</div>
-                        <p class="rn-muted mt-2 rn-mb-0"><Icon Name="sparkles" /> @item.Reason</p>
-                        <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm mt-2" disabled="@IsBusy" @onclick="() => AddLocalAsync(item)"><Icon Name="plus" /> Want to read</button>
-                    </div>
-                </article>
-            }
-        </div>
-    }
-
-    @if (_data.Topics.Genres.Count > 0 || _data.Topics.Authors.Count > 0)
-    {
-        <section class="rn-section">
-            <div class="rn-section-header"><h2>Explore the wider catalogue</h2></div>
-            <p class="rn-subtle">Searches of Google Books / Open Library based on your favourite genres and authors. Books already in your library are hidden.</p>
-            @foreach (var topic in _topics)
-            {
-                <div class="rn-card tight mb-3" @key="topic.Label">
-                    <div class="rn-flex rn-between mb-2">
-                        <strong>@topic.Label</strong>
-                        <a class="rn-subtle" href="@topic.Href">See all</a>
-                    </div>
-                    @if (topic.Error is not null)
+        @foreach (var group in Groups)
+        {
+            <section class="rn-section" style="gap:18px" @key="group.Title">
+                <h2 class="rn-mb-0">@group.Title</h2>
+                <div class="rn-grid rn-grid-2">
+                    @foreach (var item in group.Items)
                     {
-                        <p class="rn-subtle rn-mb-0">@topic.Error</p>
-                    }
-                    else if (topic.Books is null)
-                    {
-                        <LoadingIndicator />
-                    }
-                    else if (topic.Books.Count == 0)
-                    {
-                        <p class="rn-subtle rn-mb-0">Nothing new found here — you may already have the popular titles.</p>
-                    }
-                    else
-                    {
-                        <div class="rn-book-grid">
-                            @foreach (var book in topic.Books)
-                            {
-                                <article class="rn-book-card" @key="book.ExternalId">
-                                    <a class="rn-book-card-link" href="@("explore/" + book.Provider + "/" + Uri.EscapeDataString(book.ExternalId))">
-                                        <BookCover Title="@book.Title" Author="@(book.Authors.Count > 0 ? book.Authors[0] : null)" Url="@book.CoverUrl" Size="fill" />
-                                        <span class="rn-book-title">@book.Title</span>
-                                    </a>
-                                    <span class="rn-book-author">@string.Join(", ", book.Authors)</span>
-                                </article>
-                            }
-                        </div>
+                        <article class="rn-rec" @key="item.Book.Id">
+                            <a class="rn-cover-button" href="@("books/" + item.Book.Id)" tabindex="-1" aria-hidden="true">
+                                <BookCover Title="@item.Book.Title" Author="@First(item.Book.Authors)" Url="@item.Book.CoverUrl" Shadow="md" />
+                            </a>
+                            <div class="rn-rec-body">
+                                <a class="rn-rec-title" href="@("books/" + item.Book.Id)">@item.Book.Title</a>
+                                <span style="font-size:15px">@Authors(item.Book.Authors) <span class="rn-muted">@Meta(item.Book.PublishedYear, item.Book.PageCount)</span></span>
+                                <p class="rn-why"><Icon Name="lightbulb" /><span>@item.Reason</span></p>
+                                <div class="rn-actions" style="gap:6px 12px; margin-top:auto; padding-top:10px">
+                                    @if (_added.Contains(item.Book.Id))
+                                    {
+                                        <StatusBadge Status="ReadingStatus.WantToRead" />
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" disabled="@IsBusy" @onclick="() => WantAsync(item)"><Icon Name="plus" />Want to read</button>
+                                    }
+                                    <button type="button" class="rn-btn rn-btn-ghost muted rn-btn-sm" disabled="@IsBusy" @onclick="() => DismissAsync(item)"><Icon Name="x" />Not for me</button>
+                                </div>
+                            </div>
+                        </article>
                     }
                 </div>
-            }
-        </section>
+            </section>
+        }
+
+        @if (_further.Count > 0)
+        {
+            <section class="rn-section" style="gap:18px">
+                <div class="rn-section-header">
+                    <h2>A little further afield</h2>
+                    <p>From the wider catalogue, by the authors and subjects you like most. Books already in your library are left out.</p>
+                </div>
+                <div class="rn-grid rn-grid-2">
+                    @foreach (var pick in _further)
+                    {
+                        var book = pick.Book;
+                        <article class="rn-rec" @key="book.Provider + book.ExternalId">
+                            <a class="rn-cover-button" href="@CatalogHref(book)" tabindex="-1" aria-hidden="true">
+                                <BookCover Title="@book.Title" Author="@First(book.Authors)" Url="@book.CoverUrl" Isbn="@book.Isbn13" Shadow="md" />
+                            </a>
+                            <div class="rn-rec-body">
+                                <a class="rn-rec-title" href="@CatalogHref(book)">@book.Title</a>
+                                <span style="font-size:15px">@Authors(book.Authors) <span class="rn-muted">@Meta(book.PublishedYear, book.PageCount)</span></span>
+                                <p class="rn-why"><Icon Name="lightbulb" /><span>@pick.Why</span></p>
+                                <div class="rn-actions" style="margin-top:auto; padding-top:10px">
+                                    @if (_addedCatalog.Contains(book.ExternalId))
+                                    {
+                                        <StatusBadge Status="ReadingStatus.WantToRead" />
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" disabled="@IsBusy" @onclick="() => WantCatalogAsync(book)"><Icon Name="plus" />Want to read</button>
+                                    }
+                                </div>
+                            </div>
+                        </article>
+                    }
+                </div>
+            </section>
+        }
+        else if (_furtherLoading)
+        {
+            <LoadingIndicator Kind="inline" Text="Looking further afield…" />
+        }
+
+        @if (_data.Items.Count == 0 && _further.Count == 0 && !_furtherLoading)
+        {
+            <div class="rn-empty plain">
+                <h2>@(_data.SignalCount == 0 ? "Not enough to go on yet" : "That’s everything for now")</h2>
+                <p>@(_data.SignalCount == 0
+                    ? "Finish, rate or favourite a few books and suggestions will appear, each with the reason it’s here."
+                    : "New suggestions appear as you rate and finish books.")</p>
+                <div class="rn-actions">
+                    @if (_data.DismissedCount > 0)
+                    {
+                        <button type="button" class="rn-btn rn-btn-secondary" disabled="@IsBusy" @onclick="RestoreAllAsync">Show dismissed suggestions</button>
+                    }
+                    <a class="rn-btn rn-btn-primary" href="explore"><Icon Name="compass" />Discover books</a>
+                </div>
+            </div>
+        }
+        else if (_data.DismissedCount > 0)
+        {
+            <p class="rn-subtle rn-mb-0">
+                You’ve set aside @Formats.Count(_data.DismissedCount, "suggestion").
+                <button type="button" class="rn-link-button" disabled="@IsBusy" @onclick="RestoreAllAsync">Show them again</button>
+            </p>
+        }
     }
-}
+</div>
 
 @code {
-    private sealed class Topic(string label, string href, CatalogSearchRequest request)
-    {
-        public string Label { get; } = label;
+    private sealed record Group(string Title, IReadOnlyList<RecommendationDto> Items);
 
-        public string Href { get; } = href;
-
-        public CatalogSearchRequest Request { get; } = request;
-
-        public IReadOnlyList<CatalogBook>? Books { get; set; }
-
-        public string? Error { get; set; }
-    }
+    private sealed record FurtherPick(CatalogBook Book, string Why);
 
     private Guid _userId;
     private RecommendationsDto? _data;
     private string? _error;
-    private readonly List<Topic> _topics = [];
+    private readonly HashSet<Guid> _added = [];
+    private readonly HashSet<string> _addedCatalog = [];
+    private readonly List<FurtherPick> _further = [];
+    private bool _furtherLoading;
+
+    private IEnumerable<Group> Groups
+    {
+        get
+        {
+            if (_data is null)
+            {
+                yield break;
+            }
+
+            var authors = _data.Items.Where(i => i.Basis == ReasonKind.Author).ToList();
+            var subjects = _data.Items.Where(i => i.Basis == ReasonKind.Genre).ToList();
+            if (authors.Count > 0)
+            {
+                yield return new Group("Authors you already love", authors);
+            }
+
+            if (subjects.Count > 0)
+            {
+                yield return new Group("Subjects you keep returning to", subjects);
+            }
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -126,50 +171,139 @@ else
     private async Task RefreshAsync()
     {
         _error = await LoadAsync(async () => _data = await RecommendationService.GetRecommendationsAsync(_userId, 12, ComponentToken));
-        if (_data is null)
+        if (_data is not null && _further.Count == 0)
+        {
+            await LoadFurtherAsync(_data.Topics);
+        }
+    }
+
+    /// <summary>Two live catalogue searches at most per visit, to stay well inside the providers' rate limits.</summary>
+    private async Task LoadFurtherAsync(DiscoveryTopicsDto topics)
+    {
+        var searches = new List<(CatalogSearchRequest Request, string Why)>();
+        if (topics.Authors.FirstOrDefault() is { } author)
+        {
+            searches.Add((new CatalogSearchRequest(author, CatalogSearchField.Author, 1, 12), $"More by {author}, whose books you’ve enjoyed."));
+        }
+
+        if (topics.Genres.FirstOrDefault() is { } genre)
+        {
+            searches.Add((new CatalogSearchRequest(genre, CatalogSearchField.Subject, 1, 12), $"{genre}, a subject you keep returning to."));
+        }
+
+        if (searches.Count == 0)
         {
             return;
         }
 
-        _topics.Clear();
-        foreach (var genre in _data.Topics.Genres.Take(2))
-        {
-            _topics.Add(new Topic($"Because you enjoy {genre}", "explore?field=Subject&q=" + Uri.EscapeDataString(genre), new CatalogSearchRequest(genre, CatalogSearchField.Subject, 1, 12)));
-        }
-
-        foreach (var author in _data.Topics.Authors.Take(2))
-        {
-            _topics.Add(new Topic($"More by {author}", "explore?field=Author&q=" + Uri.EscapeDataString(author), new CatalogSearchRequest(author, CatalogSearchField.Author, 1, 12)));
-        }
-
+        _furtherLoading = true;
         StateHasChanged();
-        foreach (var topic in _topics)
+        foreach (var (request, why) in searches)
         {
-            await LoadTopicAsync(topic);
-            StateHasChanged();
+            try
+            {
+                var result = await Catalog.SearchAsync(request, ComponentToken);
+                var keys = result.Items.Select(b => new CatalogMatchKey(b.Provider, b.ExternalId, b.Isbn13)).ToList();
+                var owned = await Library.GetCatalogMatchesAsync(_userId, keys, ComponentToken);
+                _further.AddRange(result.Items.Where(b => !owned.ContainsKey(b.ExternalId)).Take(3).Select(b => new FurtherPick(b, why)));
+            }
+            catch (Exception ex) when (Describe(ex) is not null)
+            {
+                // The wider catalogue is optional; suggestions from your own reading still show.
+            }
+        }
+
+        _furtherLoading = false;
+    }
+
+    private async Task WantAsync(RecommendationDto item)
+    {
+        var userId = _userId;
+        AddEntryResult? result = null;
+        await RunAsync(
+            async () =>
+            {
+                result = await Library.AddBookAsync(userId, new AddToLibraryRequest(item.Book.Id, ReadingStatus.WantToRead), ComponentToken);
+                _added.Add(item.Book.Id);
+            },
+            "Added " + item.Book.Title + " to Want to read.",
+            undo: async () =>
+            {
+                if (result is { AlreadyInLibrary: false })
+                {
+                    await Library.RemoveAsync(userId, result.EntryId, CancellationToken.None);
+                    _added.Remove(item.Book.Id);
+                }
+            });
+    }
+
+    private async Task WantCatalogAsync(CatalogBook book)
+    {
+        var userId = _userId;
+        AddEntryResult? result = null;
+        await RunAsync(
+            async () =>
+            {
+                result = await Library.AddCatalogBookAsync(userId, book, ReadingStatus.WantToRead, ComponentToken);
+                _addedCatalog.Add(book.ExternalId);
+            },
+            "Added " + book.Title + " to Want to read.",
+            undo: async () =>
+            {
+                if (result is { AlreadyInLibrary: false })
+                {
+                    await Library.RemoveAsync(userId, result.EntryId, CancellationToken.None);
+                    _addedCatalog.Remove(book.ExternalId);
+                }
+            });
+    }
+
+    private async Task DismissAsync(RecommendationDto item)
+    {
+        var userId = _userId;
+        var bookId = item.Book.Id;
+        if (await RunAsync(
+                () => RecommendationService.DismissAsync(userId, bookId, ComponentToken),
+                "Got it. " + item.Book.Title + " won’t be suggested again.",
+                undo: async () =>
+                {
+                    await RecommendationService.RestoreAsync(userId, bookId, CancellationToken.None);
+                    await RefreshAsync();
+                }))
+        {
+            _data = _data! with { Items = _data.Items.Where(i => i.Book.Id != bookId).ToList(), DismissedCount = _data.DismissedCount + 1 };
         }
     }
 
-    private async Task LoadTopicAsync(Topic topic)
+    private async Task RestoreAllAsync()
     {
-        try
+        var restored = 0;
+        if (await RunAsync(async () => restored = await RecommendationService.RestoreAllAsync(_userId, ComponentToken)))
         {
-            var result = await Catalog.SearchAsync(topic.Request, ComponentToken);
-            var keys = result.Items.Select(b => new CatalogMatchKey(b.Provider, b.ExternalId, b.Isbn13)).ToList();
-            var owned = await Library.GetCatalogMatchesAsync(_userId, keys, ComponentToken);
-            topic.Books = result.Items.Where(b => !owned.ContainsKey(b.ExternalId)).Take(6).ToList();
-        }
-        catch (Exception ex) when (Describe(ex) is { } message)
-        {
-            topic.Error = message;
+            Toasts.Success(Formats.Count(restored, "suggestion") + " restored.");
+            await RefreshAsync();
         }
     }
 
-    private async Task AddLocalAsync(RecommendationDto item)
+    private static string? First(IReadOnlyList<string> authors) => authors.Count > 0 ? authors[0] : null;
+
+    private static string Authors(IReadOnlyList<string> authors) => authors.Count > 0 ? string.Join(", ", authors) : "Unknown author";
+
+    private static string Meta(int? year, int? pages)
     {
-        if (await RunAsync(() => Library.AddBookAsync(_userId, new AddToLibraryRequest(item.Book.Id, ReadingStatus.WantToRead), ComponentToken), $"Added “{item.Book.Title}” to Want to Read."))
+        var parts = new List<string>();
+        if (year is { } y)
         {
-            _data = _data! with { Items = _data.Items.Where(i => i.Book.Id != item.Book.Id).ToList() };
+            parts.Add(y.ToString(CultureInfo.InvariantCulture));
         }
+
+        if (pages is { } p)
+        {
+            parts.Add(Formats.Count(p, "page"));
+        }
+
+        return parts.Count == 0 ? "" : "· " + string.Join(" · ", parts);
     }
+
+    private static string CatalogHref(CatalogBook book) => $"explore/{book.Provider}/{Uri.EscapeDataString(book.ExternalId)}";
 }

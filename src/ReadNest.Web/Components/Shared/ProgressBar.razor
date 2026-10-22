@@ -1,30 +1,54 @@
+@* Sage progress bar: sm (6px), md (10px), standard (12px) or lg (16px, with quarter ticks). Always paired with text. *@
 @if (Percent is { } percent)
 {
-    var text = percent.ToString("0.##", CultureInfo.InvariantCulture);
-    <div class="rn-progress @(percent >= 100 ? "complete" : null)" role="progressbar" aria-valuemin="0" aria-valuemax="100"
-         aria-valuenow="@text" aria-label="@("Reading progress " + text + "%")">
+    var text = percent.ToString("0.#", CultureInfo.InvariantCulture);
+    <div class="rn-progress @Size" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@text"
+         aria-label="@(Label ?? "Reading progress")" aria-valuetext="@(text + "%")">
         <span style="width:@(text)%"></span>
+        @if (Ticks)
+        {
+            @foreach (var tick in TickPositions)
+            {
+                <i class="tick" style="left:@(tick)%" aria-hidden="true"></i>
+            }
+        }
     </div>
     @if (ShowLabel)
     {
         <div class="rn-progress-label">
-            <span>@CurrentPage.ToString("N0") / @(TotalPages?.ToString("N0")) pages</span>
-            <span>@percent.ToString("0.##")% complete</span>
+            <span>@PageText(CurrentPage, TotalPages)</span>
+            <span>@Format(percent)</span>
         </div>
     }
 }
 else if (ShowLabel)
 {
     <div class="rn-progress-label">
-        <span>@(CurrentPage > 0 ? "Page " + CurrentPage.ToString("N0") : "Not started")</span>
-        <span>Total pages unknown</span>
+        <span>@PageText(CurrentPage, TotalPages)</span>
+        <span>Page count unknown</span>
     </div>
 }
 
 @code {
+    private static readonly int[] TickPositions = [25, 50, 75];
+
     [Parameter] public int CurrentPage { get; set; }
     [Parameter] public int? TotalPages { get; set; }
     [Parameter] public bool ShowLabel { get; set; } = true;
 
+    /// <summary>"sm", "md", "" (standard) or "lg".</summary>
+    [Parameter] public string Size { get; set; } = "";
+    [Parameter] public bool Ticks { get; set; }
+    [Parameter] public string? Label { get; set; }
+
     private decimal? Percent => ReadNest.Domain.Entities.UserBook.CalculateProgress(CurrentPage, TotalPages);
+
+    public static string Format(decimal percent) =>
+        Math.Round(percent, 0, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture) + "%";
+
+    /// <summary>"p. 164 of 272", or "p. 164" when the page count is unknown.</summary>
+    public static string PageText(int currentPage, int? totalPages) =>
+        totalPages is { } total
+            ? "p. " + currentPage.ToString("N0", CultureInfo.CurrentCulture) + " of " + total.ToString("N0", CultureInfo.CurrentCulture)
+            : currentPage > 0 ? "p. " + currentPage.ToString("N0", CultureInfo.CurrentCulture) : "Not started";
 }

@@ -1,28 +1,33 @@
 @using ReadNest.Application.Social
-<article class="rn-book-card">
+@* A book on someone's public shelf or profile. Manually added books have no public page, so they are not links. *@
+<article class="rn-book-card" role="listitem">
     @if (Book.IsCatalogBook)
     {
-        <a class="rn-book-card-link" href="@("books/" + Book.BookId)">
-            <BookCover Title="@Book.Title" Author="@(Book.Authors.Count > 0 ? Book.Authors[0] : null)" Url="@Book.CoverUrl" Size="fill" />
-            <span class="rn-book-title">@Book.Title</span>
+        <a class="rn-cover-button" href="@("books/" + Book.BookId)" tabindex="-1" aria-hidden="true">
+            <BookCover Title="@Book.Title" Author="@FirstAuthor" Url="@Book.CoverUrl" />
         </a>
+        <h3 class="rn-book-title" title="@Book.Title"><a href="@("books/" + Book.BookId)">@Book.Title</a></h3>
     }
     else
     {
-        <BookCover Title="@Book.Title" Author="@(Book.Authors.Count > 0 ? Book.Authors[0] : null)" Url="@Book.CoverUrl" Size="fill" />
-        <span class="rn-book-title">@Book.Title</span>
+        <BookCover Title="@Book.Title" Author="@FirstAuthor" Url="@Book.CoverUrl" />
+        <h3 class="rn-book-title" title="@Book.Title">@Book.Title</h3>
     }
-    <span class="rn-book-author">@string.Join(", ", Book.Authors)</span>
-    <div class="rn-book-meta">
+    <p class="rn-book-author">@(Book.Authors.Count > 0 ? string.Join(", ", Book.Authors) : "Unknown author")</p>
+    <div style="padding-top:var(--space-3); display:flex; align-items:center; min-width:0">
         @if (ShowStatus)
         {
             <StatusBadge Status="Book.Status" />
         }
-        <Stars Value="Book.Rating" />
+    </div>
+    <div class="rn-book-foot" style="padding-top:var(--space-2)">
+        <Stars Value="Book.Rating" IconSize="14" />
     </div>
 </article>
 
 @code {
     [Parameter, EditorRequired] public PublicBookDto Book { get; set; } = default!;
     [Parameter] public bool ShowStatus { get; set; }
+
+    private string? FirstAuthor => Book.Authors.Count > 0 ? Book.Authors[0] : null;
 }

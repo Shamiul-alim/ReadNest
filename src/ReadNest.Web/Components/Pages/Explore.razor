@@ -3,170 +3,234 @@
 @inherits ReadNestComponentBase
 @using ReadNest.Application.Books
 @using ReadNest.Application.Library
+@using ReadNest.Application.Recommendations
 @using ReadNest.Application.Social
 @inject CatalogService Catalog
 @inject LibraryService Library
 @inject ProfileService Profiles
+@inject RecommendationService Recommendations
+@inject IJSRuntime JS
 
-<AppTitle Text="Explore books" />
-
-<PageHeader Title="Explore books" Description="Search Google Books and Open Library, then add what you find to your library.">
-    <Actions>
-        @if (_userId is not null)
-        {
-            <a class="rn-btn rn-btn-secondary" href="library/add"><Icon Name="plus" /> Add a book manually</a>
-        }
-    </Actions>
-</PageHeader>
-
-<form class="rn-card tight rn-toolbar" role="search" @onsubmit="Submit">
-    <div class="rn-field rn-grow">
-        <label class="rn-label" for="explore-q">Search</label>
-        <input id="explore-q" class="rn-input" type="search" maxlength="200" placeholder="Title, author, ISBN or keyword" @bind="_query" />
-    </div>
-    <div class="rn-field">
-        <label class="rn-label" for="explore-field">Search in</label>
-        <select id="explore-field" class="rn-select" @bind="_field">
-            <option value="@CatalogSearchField.Keyword">Everything</option>
-            <option value="@CatalogSearchField.Title">Title</option>
-            <option value="@CatalogSearchField.Author">Author</option>
-            <option value="@CatalogSearchField.Isbn">ISBN</option>
-            <option value="@CatalogSearchField.Subject">Genre / subject</option>
-        </select>
-    </div>
-    <div class="rn-field">
-        <label class="rn-label" for="explore-lang">Language</label>
-        <select id="explore-lang" class="rn-select" @bind="_language">
-            <option value="">Any language</option>
-            @foreach (var language in SelectOptions.Languages)
-            {
-                <option value="@language.Code">@language.Name</option>
-            }
-        </select>
-    </div>
-    <div class="rn-field">
-        <label class="rn-label" for="explore-source">Source</label>
-        <select id="explore-source" class="rn-select" @bind="_source">
-            <option value="">Automatic</option>
-            @foreach (var provider in Catalog.EnabledProviders)
-            {
-                <option value="@provider">@provider.ToDisplayName()</option>
-            }
-        </select>
-    </div>
-    <button type="submit" class="rn-btn rn-btn-primary"><Icon Name="search" /> Search</button>
-</form>
+<AppTitle Text="@(string.IsNullOrWhiteSpace(Q) ? "Discover books" : "Results for " + Q)" />
 
 @if (string.IsNullOrWhiteSpace(Q))
 {
-    <section class="rn-section rn-mt-0">
-        <h2 class="h5">Popular topics</h2>
-        <div class="rn-chips">
-            @foreach (var topic in Topics)
-            {
-                <a class="rn-chip" href="@TopicHref(topic)">@topic</a>
-            }
-        </div>
-    </section>
-    <div class="mt-4">
-        <EmptyState Title="Find your next book" IconName="compass"
-                    Text="Search by title, author, ISBN or subject. Results come from public book catalogues and are matched against your library." />
-    </div>
-}
-else if (_loading)
-{
-    <LoadingIndicator Text="Searching the catalogue…" />
-}
-else if (_error is not null)
-{
-    <ErrorAlert Title="The catalogue is unavailable" Message="@_error" OnRetry="SearchAsync" />
-    @if (_userId is not null)
-    {
-        <p class="mt-3 rn-subtle">Your saved books are still available in <a href="library">My Library</a>.</p>
-    }
-}
-else if (_result is not null)
-{
-    @foreach (var notice in _result.Notices)
-    {
-        <div class="rn-alert rn-alert-info mb-3"><Icon Name="info" /><div class="rn-alert-body">@notice</div></div>
-    }
-
-    @if (_result.Items.Count == 0)
-    {
-        <EmptyState Title="No books found" IconName="search" Text="Try a different spelling, fewer words, or another search field.">
-            @if (_userId is not null)
-            {
-                <a class="rn-btn rn-btn-secondary" href="library/add">Add the book manually</a>
-            }
-        </EmptyState>
-    }
-    else
-    {
-        <p class="rn-subtle">
-            @(_result.TotalItems is { } total ? total.ToString("N0") + " results" : "Results")
-            @if (_result.ServedBy is { } servedBy)
-            {
-                <span> · from @servedBy.ToDisplayName()</span>
-            }
-        </p>
-        <div class="rn-book-grid">
-            @foreach (var book in _result.Items)
-            {
-                var key = book.ExternalId;
-                <article class="rn-book-card" @key="key">
-                    <a class="rn-book-card-link" href="@DetailsHref(book)">
-                        <BookCover Title="@book.Title" Author="@(book.Authors.Count > 0 ? book.Authors[0] : null)" Url="@book.CoverUrl" Size="fill" />
-                        <span class="rn-book-title">@book.Title</span>
-                    </a>
-                    <span class="rn-book-author">@(book.Authors.Count > 0 ? string.Join(", ", book.Authors) : "Unknown author")</span>
-                    <div class="rn-book-meta">
-                        @if (book.PublishedYear is { } year)
+    <div class="rn-page" style="gap:48px">
+        <section style="display:flex; flex-direction:column; gap:18px; max-width:880px">
+            <h1 class="rn-mb-0" tabindex="-1" style="font-size:clamp(34px, 4.6vw, 54px); line-height:1.04">What will you read next?</h1>
+            <p class="rn-lede" style="max-width:560px">Search the catalogue by title, author, subject or ISBN, or wander by subject below.</p>
+            @SearchForm(large: true)
+            <div style="display:flex; flex-wrap:wrap; align-items:center; gap:12px 20px">
+                @FieldPicker
+                @if (_recent.Count > 0)
+                {
+                    <div class="rn-chips">
+                        <span class="rn-subtle">Recent</span>
+                        @foreach (var recent in _recent)
                         {
-                            <span>@year</span>
-                        }
-                        @if (book.PageCount is { } pages)
-                        {
-                            <span>@pages.ToString("N0") pages</span>
+                            <a class="rn-chip" href="@("explore?q=" + Uri.EscapeDataString(recent))">@recent</a>
                         }
                     </div>
-                    @if (_matches.TryGetValue(key, out var status))
+                }
+            </div>
+        </section>
+
+        <section aria-labelledby="subjects-h" class="rn-section">
+            <h2 id="subjects-h" class="rn-mb-0" style="font-size:20px">Browse by subject</h2>
+            <div class="rn-chips">
+                @foreach (var topic in Topics)
+                {
+                    <a class="rn-filter" href="@TopicHref(topic)">@topic</a>
+                }
+            </div>
+        </section>
+
+        @if (_suggestions is { Count: > 0 })
+        {
+            <section aria-labelledby="foryou-h" class="rn-feature sage">
+                <div class="rn-feature-blob" aria-hidden="true"></div>
+                <div style="flex:1 1 280px; display:flex; flex-direction:column; gap:12px">
+                    <div style="font-size:14px; font-weight:700">Picked from your own reading · @Formats.Count(_suggestions.Count, "book")</div>
+                    <h2 id="foryou-h" class="rn-mb-0" style="font-size:clamp(30px, 3.6vw, 44px); line-height:1.05">Books that fit your shelves</h2>
+                    <p class="rn-mb-0" style="font-size:16px; line-height:1.6; max-width:420px">Each one shares an author or subject with books you’ve finished, rated or favourited.</p>
+                    <a class="rn-btn rn-btn-secondary paper" style="align-self:flex-start" href="recommendations">See why<Icon Name="arrow-right" /></a>
+                </div>
+                <div style="flex:1 1 360px; display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:12px; align-items:end">
+                    @foreach (var rec in _suggestions.Take(5))
                     {
-                        <span><StatusBadge Status="status" /></span>
+                        <a class="rn-cover-button" href="@("books/" + rec.Book.Id)" aria-label="@("Open " + rec.Book.Title)"><BookCover Title="@rec.Book.Title" Author="@First(rec.Book.Authors)" Url="@rec.Book.CoverUrl" Shadow="md" /></a>
                     }
-                    else if (_userId is not null)
-                    {
-                        <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" disabled="@(_adding == key)" @onclick="() => AddAsync(book)">
-                            @if (_adding == key)
-                            {
-                                <span class="rn-spinner sm"></span>
-                            }
-                            else
-                            {
-                                <Icon Name="plus" />
-                            }
-                            Want to read
-                        </button>
-                    }
-                </article>
+                </div>
+            </section>
+        }
+        else if (_userId is null)
+        {
+            <div class="rn-card dashed" style="max-width:640px">
+                <strong class="rn-heading" style="font-size:20px">Suggestions with a reason attached</strong>
+                <span class="rn-subtle" style="font-size:15px">Sign in and finish or rate a few books, and ReadNest will suggest more by the authors and subjects you return to.</span>
+                <div class="rn-actions"><a class="rn-btn rn-btn-primary" href="Account/Register">Start your library</a><a class="rn-btn rn-btn-ghost" href="Account/Login">Sign in</a></div>
+            </div>
+        }
+        @if (_userId is not null)
+        {
+            <p class="rn-subtle rn-mb-0">Can’t find a book? <a href="library/add">Add it by hand</a>.</p>
+        }
+    </div>
+}
+else
+{
+    <div class="rn-page" style="gap:26px">
+        <BackLink Href="explore" Text="Discover" />
+        <div style="display:flex; flex-direction:column; gap:6px">
+            <h1 class="rn-mb-0" tabindex="-1" style="font-size:clamp(30px, 4vw, 44px)">Results for “@Q”</h1>
+            @if (_result is { Items.Count: > 0 })
+            {
+                <p class="rn-mb-0" style="font-size:16px; color:var(--color-neutral-700)">@CountLine</p>
             }
         </div>
-        <Pager Page="_result.Page" TotalPages="TotalPages" TotalCount="_result.TotalItems" HasMore="_result.HasMore" ItemName="results" OnPageChanged="GoToPage" />
-    }
+        <div style="max-width:720px; display:flex; flex-direction:column; gap:12px">
+            @SearchForm(large: false)
+            <div style="display:flex; flex-wrap:wrap; align-items:center; gap:12px 20px">@FieldPicker</div>
+        </div>
+
+        @if (_result is { Items.Count: > 0 })
+        {
+            <div aria-label="Filter results" class="rn-chips">
+                <button type="button" class="rn-filter" aria-pressed="@(_subject is null ? "true" : "false")" @onclick="() => _subject = null">All <span class="count">@_items.Count</span></button>
+                @foreach (var subject in SubjectCounts)
+                {
+                    var name = subject.Name;
+                    <button type="button" class="rn-filter" aria-pressed="@(_subject == name ? "true" : "false")" @onclick="() => _subject = name">@name <span class="count">@subject.Count</span></button>
+                }
+                @if (_userId is not null)
+                {
+                    <span style="width:1px; height:24px; background:var(--color-divider); margin:0 4px" aria-hidden="true"></span>
+                    <button type="button" class="rn-filter" aria-pressed="@(_notInLibrary ? "true" : "false")" @onclick="() => _notInLibrary = !_notInLibrary"><Icon Name="bookmark" />Not in my library</button>
+                }
+            </div>
+        }
+
+        @if (_loading && _items.Count == 0)
+        {
+            <LoadingIndicator Kind="rows" Text="Searching the catalogue…" />
+        }
+        else if (_error is not null)
+        {
+            <div class="rn-retry" role="alert" style="gap:12px; padding:28px">
+                <strong style="display:flex; align-items:center; gap:10px"><Icon Name="wifi-off" />The catalogue didn’t respond</strong>
+                <p style="font-size:15px">@_error Your library is unaffected. Try again in a moment.</p>
+                <button type="button" class="rn-btn rn-btn-primary" @onclick="RetryAsync"><Icon Name="refresh" />Try again</button>
+            </div>
+        }
+        else if (_result is not null)
+        {
+            @foreach (var notice in _result.Notices)
+            {
+                <div class="rn-alert rn-alert-info" style="max-width:720px"><Icon Name="info" /><div class="rn-alert-body">@notice</div></div>
+            }
+            @if (_items.Count == 0 || Visible.Count == 0)
+            {
+                <div class="rn-empty plain" style="max-width:620px">
+                    <h2>No books found</h2>
+                    <p>Check the spelling, try just the author’s surname, or paste the 13-digit ISBN from the back cover.@(Filtered ? " You’ve filtered the results; clear the filters to see everything." : "")</p>
+                    <div class="rn-actions">
+                        @if (Filtered)
+                        {
+                            <button type="button" class="rn-btn rn-btn-secondary" @onclick="ClearFilters">Clear filters</button>
+                        }
+                        @if (_field != CatalogSearchField.Keyword)
+                        {
+                            <a class="rn-btn rn-btn-ghost" href="@("explore?q=" + Uri.EscapeDataString(Q!))">Search everything for “@Q”</a>
+                        }
+                        @if (_userId is not null)
+                        {
+                            <a class="rn-btn rn-btn-ghost" href="library/add">Add it by hand</a>
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="rn-list ruled">
+                    @foreach (var book in Visible)
+                    {
+                        var key = book.ExternalId;
+                        <article class="rn-list-item top" style="gap:clamp(14px, 2.5vw, 26px); padding:20px 0" @key="key">
+                            <a class="rn-cover-button" style="width:clamp(72px, 10vw, 100px); flex:none" href="@DetailsHref(book)" tabindex="-1" aria-hidden="true">
+                                <BookCover Title="@book.Title" Author="@First(book.Authors)" Url="@book.CoverUrl" Isbn="@book.Isbn13" />
+                            </a>
+                            <div class="rn-list-body" style="gap:5px">
+                                <a class="rn-list-title" style="font-size:21px; text-wrap:pretty" href="@DetailsHref(book)">@book.Title</a>
+                                @if (book.Subtitle is not null)
+                                {
+                                    <div style="font-size:15px; color:var(--color-neutral-700)">@book.Subtitle</div>
+                                }
+                                <div style="font-size:15px">@(book.Authors.Count > 0 ? string.Join(", ", book.Authors) : "Unknown author")</div>
+                                <div class="rn-subtle">@Meta(book)</div>
+                                @if (Snippet(book.Description) is { } snippet)
+                                {
+                                    <p class="rn-mb-0" style="margin-top:4px; font-size:15px; line-height:1.6; max-width:68ch">@snippet</p>
+                                }
+                                <div style="padding-top:8px">
+                                    @if (_matches.TryGetValue(key, out var status))
+                                    {
+                                        <StatusBadge Status="status" />
+                                    }
+                                    else if (_userId is not null)
+                                    {
+                                        <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" disabled="@(_adding == key)" @onclick="() => AddAsync(book)">
+                                            @if (_adding == key)
+                                            {
+                                                <span class="rn-spinner sm" aria-hidden="true"></span>
+                                            }
+                                            else
+                                            {
+                                                <Icon Name="plus" />
+                                            }
+                                            Want to read
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        </article>
+                    }
+                </div>
+                @if (_result.HasMore && _page < CatalogService.MaxPage)
+                {
+                    <div>
+                        <button type="button" class="rn-btn rn-btn-secondary" disabled="@_loading" @onclick="MoreAsync">
+                            @if (_loading)
+                            {
+                                <span class="rn-spinner sm" aria-hidden="true"></span>
+                            }
+                            Show @PageSize more
+                        </button>
+                    </div>
+                }
+            }
+        }
+    </div>
 }
 
 @code {
+    private const int PageSize = 20;
+
     private static readonly string[] Topics =
     [
-        "Software Engineering", "Science Fiction", "Fantasy", "History", "Psychology", "Philosophy",
-        "Personal Development", "Mystery", "Biography", "Economics", "Poetry", "Design",
+        "Literary fiction", "Historical fiction", "Science fiction", "Fantasy", "Mystery", "Poetry", "Classics",
+        "Biography", "History", "Nature writing", "Philosophy", "Psychology", "Essays", "Software engineering",
+    ];
+
+    private static readonly (CatalogSearchField Field, string Label)[] Fields =
+    [
+        (CatalogSearchField.Keyword, "All"), (CatalogSearchField.Title, "Title"), (CatalogSearchField.Author, "Author"),
+        (CatalogSearchField.Isbn, "ISBN"), (CatalogSearchField.Subject, "Subject"),
     ];
 
     [SupplyParameterFromQuery(Name = "q")] public string? Q { get; set; }
     [SupplyParameterFromQuery(Name = "field")] public string? Field { get; set; }
     [SupplyParameterFromQuery(Name = "lang")] public string? Lang { get; set; }
     [SupplyParameterFromQuery(Name = "source")] public string? Source { get; set; }
-    [SupplyParameterFromQuery(Name = "page")] public int? PageNumber { get; set; }
 
     private Guid? _userId;
     private string _query = "";
@@ -176,13 +240,89 @@ else if (_result is not null)
     private bool _loading;
     private string? _error;
     private string? _adding;
+    private int _page = 1;
+    private string? _subject;
+    private bool _notInLibrary;
     private CatalogSearchResult? _result;
-    private IReadOnlyDictionary<string, ReadingStatus> _matches = new Dictionary<string, ReadingStatus>();
+    private readonly List<CatalogBook> _items = [];
+    private Dictionary<string, ReadingStatus> _matches = [];
+    private IReadOnlyList<RecommendationDto>? _suggestions;
+    private IReadOnlyList<string> _recent = [];
     private bool _initialized;
+    private string? _loadedFor;
 
-    private int TotalPages => _result?.TotalItems is { } total
-        ? Math.Min(CatalogService.MaxPage, (int)Math.Ceiling(total / (double)_result.PageSize))
-        : _result?.Page ?? 1;
+    private bool Filtered => _subject is not null || _notInLibrary;
+
+    private List<CatalogBook> Visible => _items
+        .Where(b => _subject is null || CategoryCleaner.Clean(b.Categories).Contains(_subject, StringComparer.OrdinalIgnoreCase))
+        .Where(b => !_notInLibrary || !_matches.ContainsKey(b.ExternalId))
+        .ToList();
+
+    private IEnumerable<NamedCountDto> SubjectCounts => _items
+        .SelectMany(b => CategoryCleaner.Clean(b.Categories).Distinct(StringComparer.OrdinalIgnoreCase))
+        .GroupBy(c => c, StringComparer.OrdinalIgnoreCase)
+        .Select(g => new NamedCountDto(g.Key, g.Count()))
+        .Where(g => g.Count > 1 || _subject == g.Name)
+        .OrderByDescending(g => g.Count)
+        .Take(6);
+
+    private string CountLine
+    {
+        get
+        {
+            var shown = Visible.Count;
+            var about = _result!.TotalItems is { } total ? "About " + Formats.Count(total, "result") : Formats.Count(_items.Count, "result");
+            var source = _result.ServedBy is { } servedBy ? " from " + servedBy.ToDisplayName() : "";
+            return about + source + " · showing " + shown.ToString("N0", CultureInfo.CurrentCulture);
+        }
+    }
+
+    private RenderFragment SearchForm(bool large) => __builder =>
+    {
+        <form role="search" style="display:flex; flex-wrap:wrap; gap:10px" @onsubmit="Submit" @onsubmit:preventDefault>
+            <div class="rn-input-icon @(large ? "lg" : null)" style="flex:1 1 300px">
+                <Icon Name="search" />
+                <input class="rn-input @(large ? "lg" : null)" type="search" maxlength="200" aria-label="Search the catalogue" autocomplete="off"
+                       placeholder="@(_field switch { CatalogSearchField.Isbn => "Paste a 10- or 13-digit ISBN", CatalogSearchField.Author => "An author’s name", CatalogSearchField.Subject => "A subject, like nature writing", _ => "Title, author or ISBN" })"
+                       @bind="_query" />
+            </div>
+            <button type="submit" class="rn-btn rn-btn-primary" style="@(large ? "min-height:58px; padding:12px 28px; font-size:16px" : "min-height:48px")">Search</button>
+        </form>
+    };
+
+    private RenderFragment FieldPicker => __builder =>
+    {
+        <div role="radiogroup" aria-label="Search by" class="rn-seg">
+            @foreach (var option in Fields)
+            {
+                var value = option.Field;
+                <button type="button" role="radio" aria-checked="@(_field == value ? "true" : "false")" @onclick="() => _field = value">@option.Label</button>
+            }
+        </div>
+        <details>
+            <summary class="rn-subtle" style="cursor:pointer">More options</summary>
+            <div style="display:flex; flex-wrap:wrap; gap:10px; padding-top:10px">
+                <label class="rn-sort">Language
+                    <select class="rn-select" @bind="_language">
+                        <option value="">Any language</option>
+                        @foreach (var language in SelectOptions.Languages)
+                        {
+                            <option value="@language.Code">@language.Name</option>
+                        }
+                    </select>
+                </label>
+                <label class="rn-sort">Source
+                    <select class="rn-select" @bind="_source">
+                        <option value="">Automatic</option>
+                        @foreach (var provider in Catalog.EnabledProviders)
+                        {
+                            <option value="@provider">@provider.ToDisplayName()</option>
+                        }
+                    </select>
+                </label>
+            </div>
+        </details>
+    };
 
     protected override async Task OnParametersSetAsync()
     {
@@ -201,16 +341,64 @@ else if (_result is not null)
         _field = Enum.TryParse<CatalogSearchField>(Field, ignoreCase: true, out var field) ? field : CatalogSearchField.Keyword;
         _language = Lang ?? _language;
         _source = Source ?? "";
-        await SearchAsync();
-    }
 
-    private async Task SearchAsync()
-    {
-        _result = null;
-        _error = null;
-        if (string.IsNullOrWhiteSpace(Q))
+        var signature = $"{Q}|{_field}|{_language}|{_source}";
+        if (signature == _loadedFor)
         {
             return;
+        }
+
+        _loadedFor = signature;
+        _subject = null;
+        _notInLibrary = false;
+        if (string.IsNullOrWhiteSpace(Q))
+        {
+            _result = null;
+            _items.Clear();
+            if (_userId is { } uid && _suggestions is null)
+            {
+                await LoadAsync(async () => _suggestions = (await Recommendations.GetRecommendationsAsync(uid, 5, ComponentToken)).Items);
+            }
+
+            return;
+        }
+
+        await SearchAsync(page: 1);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(Q))
+            {
+                await JS.InvokeVoidAsync("readnest.rememberSearch", Q);
+            }
+
+            _recent = await JS.InvokeAsync<string[]>("readnest.recentSearches");
+            StateHasChanged();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (JSException)
+        {
+            // Recent searches are a convenience; the page works without them.
+        }
+    }
+
+    private async Task SearchAsync(int page)
+    {
+        _error = null;
+        if (page == 1)
+        {
+            _items.Clear();
+            _result = null;
         }
 
         _loading = true;
@@ -218,38 +406,52 @@ else if (_result is not null)
         _error = await LoadAsync(async () =>
         {
             CatalogProvider? provider = Enum.TryParse<CatalogProvider>(_source, out var p) ? p : null;
-            _result = await Catalog.SearchAsync(
-                new CatalogSearchRequest(Q, _field, Math.Max(1, PageNumber ?? 1), 24, string.IsNullOrEmpty(_language) ? null : _language, provider),
+            var result = await Catalog.SearchAsync(
+                new CatalogSearchRequest(Q!, _field, page, PageSize, string.IsNullOrEmpty(_language) ? null : _language, provider),
                 ComponentToken);
+            var known = _items.Select(i => i.ExternalId).ToHashSet();
+            _items.AddRange(result.Items.Where(i => known.Add(i.ExternalId)));
+            _result = result;
+            _page = page;
             await LoadMatchesAsync();
         });
         _loading = false;
     }
 
+    private Task RetryAsync() => SearchAsync(_items.Count == 0 ? 1 : _page + 1);
+
+    private Task MoreAsync() => SearchAsync(_page + 1);
+
     private async Task LoadMatchesAsync()
     {
-        if (_userId is not { } userId || _result is null)
+        if (_userId is not { } userId || _items.Count == 0)
         {
             return;
         }
 
-        var keys = _result.Items.Select(b => new CatalogMatchKey(b.Provider, b.ExternalId, b.Isbn13)).ToList();
-        _matches = await Library.GetCatalogMatchesAsync(userId, keys, ComponentToken);
+        var keys = _items.Select(b => new CatalogMatchKey(b.Provider, b.ExternalId, b.Isbn13)).ToList();
+        _matches = new Dictionary<string, ReadingStatus>(await Library.GetCatalogMatchesAsync(userId, keys, ComponentToken));
     }
 
-    private void Submit() => Navigate(1);
-
-    private void GoToPage(int page) => Navigate(page);
-
-    private void Navigate(int page)
+    private void ClearFilters()
     {
+        _subject = null;
+        _notInLibrary = false;
+    }
+
+    private void Submit()
+    {
+        if (string.IsNullOrWhiteSpace(_query))
+        {
+            return;
+        }
+
         var uri = Navigation.GetUriWithQueryParameters("explore", new Dictionary<string, object?>
         {
-            ["q"] = string.IsNullOrWhiteSpace(_query) ? null : _query.Trim(),
+            ["q"] = _query.Trim(),
             ["field"] = _field == CatalogSearchField.Keyword ? null : _field.ToString(),
             ["lang"] = string.IsNullOrEmpty(_language) ? null : _language,
             ["source"] = string.IsNullOrEmpty(_source) ? null : _source,
-            ["page"] = page > 1 ? page : null,
         });
         Navigation.NavigateTo(uri);
     }
@@ -262,17 +464,69 @@ else if (_result is not null)
         }
 
         _adding = book.ExternalId;
-        await RunAsync(async () =>
-        {
-            var result = await Library.AddCatalogBookAsync(userId, book, ReadingStatus.WantToRead, ComponentToken);
-            Toasts.Success(result.AlreadyInLibrary ? "This book is already in your library." : $"Added “{book.Title}” to Want to Read.");
-            await LoadMatchesAsync();
-        });
+        AddEntryResult? result = null;
+        await RunAsync(
+            async () =>
+            {
+                result = await Library.AddCatalogBookAsync(userId, book, ReadingStatus.WantToRead, ComponentToken);
+                _matches[book.ExternalId] = ReadingStatus.WantToRead;
+                await LoadMatchesAsync();
+            },
+            "Added " + book.Title + " to Want to read.",
+            undo: async () =>
+            {
+                if (result is { AlreadyInLibrary: false })
+                {
+                    await Library.RemoveAsync(userId, result.EntryId, CancellationToken.None);
+                    _matches.Remove(book.ExternalId);
+                    await LoadMatchesAsync();
+                }
+            });
         _adding = null;
     }
 
-    private static string DetailsHref(CatalogBook book) =>
-        $"explore/{book.Provider}/{Uri.EscapeDataString(book.ExternalId)}";
+    private static string? First(IReadOnlyList<string> authors) => authors.Count > 0 ? authors[0] : null;
+
+    private static string Meta(CatalogBook book)
+    {
+        var parts = new List<string>();
+        if (book.PublishedYear is { } year)
+        {
+            parts.Add(year.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (book.PageCount is { } pages)
+        {
+            parts.Add(Formats.Count(pages, "page"));
+        }
+
+        if (book.Publisher is { } publisher)
+        {
+            parts.Add(publisher);
+        }
+
+        parts.Add(book.Provider.ToDisplayName());
+        return string.Join(" · ", parts);
+    }
+
+    private static string? Snippet(string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            return null;
+        }
+
+        var text = string.Join(' ', description.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (text.Length <= 240)
+        {
+            return text;
+        }
+
+        var cut = text.LastIndexOf(' ', 240);
+        return text[..(cut < 120 ? 240 : cut)] + "…";
+    }
+
+    private static string DetailsHref(CatalogBook book) => $"explore/{book.Provider}/{Uri.EscapeDataString(book.ExternalId)}";
 
     private static string TopicHref(string topic) => $"explore?q={Uri.EscapeDataString(topic)}&field=Subject";
 }

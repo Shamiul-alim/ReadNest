@@ -10,18 +10,29 @@ ReadNest is a full-stack .NET 10 web application for people who want to **discov
 | --- | --- |
 | **Discover** | Search by title, author, ISBN-10/13, keyword or subject; filter by language and source; paginated results with covers, authors, year and page count; book preview pages; automatic fallback to Open Library when Google Books fails or rate-limits. |
 | **Library** | Add catalogue books or manual (private) books; statuses *Want to Read, Currently Reading, Read, Paused, Did Not Finish*; search, filter (status, genre, author, rating, favourites, shelf), sort (title, author, added, updated, finished, rating), paginate; grid and list views; favourites; remove with an explicit impact summary. |
-| **Progress** | Current page / total pages, percentage and progress bar, start/finish/last-read dates; unknown page counts handled without fake percentages; marking a book as read asks for the finish date. |
+| **Progress** | Current page / total pages, percentage and progress bar, start/finish/last-read dates; unknown page counts handled without fake percentages. An *Update progress* dialog (slider, +5/+10/+25, "I finished it", live preview) and a *Finish* dialog (rating, finish date) are available from the dashboard, the book page and the reading view, with **Undo**. |
+| **Reading view** | `/reading/{entry}`: big percentage, quarter-ticked progress bar, pages left, time read, 14-day pace and a "finish by" estimate (all from logged sessions), pause/resume/stop, reading history and notes for the book. |
 | **Reading sessions** | Date, start and end page (pages read is always derived), minutes, reflection; editing and deleting; duplicate protection; bookmark stays in sync. Quick progress updates can be recorded as today's session. |
 | **Journal** | Notes, quotes, takeaways, lessons and action items with page/chapter references; search across all notes; filter by book and type. Always private. |
 | **Ratings & reviews** | One 1–5 rating per book, written review, private or public visibility (feature-flagged), delete review, "My reviews" page, public reviews on book pages. |
 | **Goals & analytics** | Yearly book (and optional page) goals with pace; dashboard with counts, pages, streaks, monthly activity, recent books and sessions, favourite genres/authors; yearly analytics with monthly charts and rating distribution. |
-| **Recommendations** | Transparent rule-based scoring over your authors and genres, each with a reason ("Recommended because you enjoy books by …"), plus catalogue searches for your favourite topics. No AI/ML is claimed or used. |
+| **Recommendations** | Transparent rule-based scoring over your authors and genres, grouped by basis ("Authors you already love", "Subjects you keep returning to") and each with a reason, plus a few catalogue picks from your favourite author and subject. **Not for me** hides a suggestion for good (stored per reader, with Undo and "show dismissed suggestions"). Books you already own in another edition are left out. No AI/ML is claimed or used. |
 | **Shelves** | Create/rename/delete custom shelves; a book can be on many shelves; optional public share link. |
 | **Collection & loans** | Ownership, format, acquisition date, price, condition; lend/return with due dates and overdue flags; loan history. |
 | **Import / export** | CSV export (formula-injection safe), full JSON export, validated CSV import with a per-row summary. |
 | **Community** | Public profiles (opt-in), public reading list (opt-in), follow/unfollow, reader search, recent public reviews, shareable shelves, reading challenges with leaderboards. |
 | **Account** | ASP.NET Core Identity: register, login, logout, lockout, password change, 2FA, passkeys, personal-data download and account deletion. Profile, display name, avatar URL, preferred language, time zone, privacy settings. |
 | **REST API** | Versioned `/api/v1` endpoints with OpenAPI document and Scalar UI in Development; bearer tokens via `/api/auth/login`. |
+
+## Design
+
+The interface implements the *ReadNest Prototype* from the Claude Design project (Organic design system). Everything lives in `src/ReadNest.Web/wwwroot/css/app.css`:
+
+* **Tokens** — Organic colour ramps, spacing, radii and shadows as CSS custom properties. Older `--rn-*` names are aliases.
+* **Lamplight** — every ramp mirrored under `:root[data-theme=dark]` (and `prefers-color-scheme: dark` when no choice is saved). Components only use ramp tokens, so they need no dark-specific code. The choice is saved in the browser (`localStorage`) from the sidebar, account menu, More sheet or *Settings → Appearance*.
+* **Layout** — a 264px sidebar from 1080px, a 96px icon rail from 700px and a sticky top bar with a bottom bar and More sheet below 700px. Dialogs dock as bottom sheets on phones.
+* **Shared components** — `BookCover` (provider image or Open Library cover by ISBN over a typographic cover in one of six tones picked from the title), `StatusBadge` (colour + icon + label, Paused dashed), `ProgressBar`, `GoalRing`, `StarInput`, `Modal`/`ConfirmDialog`, `ToastHost` (5 s, optional Undo), `EmptyState`, `LoadingIndicator` (static skeletons) and `ErrorAlert` (reassure, explain, retry).
+* **Shell behaviour** — the shell is server-rendered. The More sheet, account menu, theme switch, recent searches (stored on the device only) and password helpers are small delegated handlers in `wwwroot/js/app.js`.
 
 ## Technology stack
 
@@ -31,7 +42,7 @@ ReadNest is a full-stack .NET 10 web application for people who want to **discov
 * Entity Framework Core 10 + Npgsql 10 on PostgreSQL (17 in Docker; any supported PostgreSQL works)
 * Minimal APIs, `Microsoft.AspNetCore.OpenApi`, Scalar API reference (Development only)
 * `Microsoft.Extensions.Http.Resilience` (timeouts, retries for transient errors) for the catalogue HTTP clients
-* Bootstrap 5 (bundled locally) layered under a custom CSS design system; inline SVG icons; no external fonts or CDNs
+* The **Organic** design system (cream and sand ground, terracotta actions, sage progress; Caprasimo and Figtree, self-hosted under the SIL Open Font License) with a dark **Lamplight** theme; Lucide icons inline; Bootstrap 5 (bundled locally) only for the account-management pages; no CDNs
 * xUnit, NSubstitute, `WebApplicationFactory`, Testcontainers for PostgreSQL
 
 ## Architecture
@@ -152,11 +163,11 @@ dotnet test ReadNest.sln
 ```
 
 * **Unit tests** (no external dependencies): status/progress/completion rules, session validation, loans, ISBN normalisation, streaks across month boundaries, goal pace (incl. leap years), monthly aggregation, recommendation ranking, CSV parsing/validation, CSV formula-injection escaping, catalogue fallback/caching/rate-limit cooldown, Google Books / Open Library parsing and failure handling, URL sanitising.
-* **Integration tests** start a disposable `postgres:17-alpine` container (Docker must be running), boot the real application with its migrations, and replace the external catalogue with a deterministic fake. They cover startup/health, model–migration consistency, authentication, the full library workflow, validation and problem responses, cross-user access attempts on every private endpoint, shelves/profile/visibility rules, lending, account deletion cascades, CSV import/export, JSON export, recommendations, challenges and provider outages.
+* **Integration tests** start a disposable `postgres:17-alpine` container (Docker must be running), boot the real application with its migrations, and replace the external catalogue with a deterministic fake. They cover startup/health, model–migration consistency, authentication, the full library workflow, validation and problem responses, cross-user access attempts on every private endpoint, shelves/profile/visibility rules, lending, account deletion cascades, CSV import/export, JSON export, recommendations (including "Not for me" isolation between readers and other editions), progress undo (including another reader trying to undo yours), weekly/daily/outcome statistics, taste statistics with enough data, CSV import keeping Paused status, 404 pages, challenges and provider outages.
 
 ### Optional browser smoke test
 
-`tests/e2e/ui-smoke.mjs` drives a running instance in headless Chrome: it registers a user, searches the live catalogue, adds books, logs progress and sessions, writes notes and reviews, visits every page, checks for Blazor errors and horizontal overflow at phone/tablet widths, and logs out. Screenshots are written to `tests/e2e/shots/`.
+`tests/e2e/ui-smoke.mjs` drives a running instance in headless Chrome: it registers a user, searches the live catalogue, adds a book and undoes it, starts a book, updates progress and logs a session (including validation errors), saves a quote, rates and reviews (checking the review renders as text), shelves and finishes the book, visits every page, uses list-view bulk selection, sets a goal, creates a challenge, switches to Lamplight, checks the 404 page, checks for Blazor errors and horizontal overflow at phone/tablet widths, opens the More sheet and signs out. Screenshots are written to `tests/e2e/shots/`.
 
 ```bash
 dotnet run --project src/ReadNest.Web --launch-profile http   # in another terminal
@@ -180,7 +191,7 @@ It uses the real Google Books / Open Library APIs, so it needs network access.
 | Reviews | `PUT/DELETE /api/v1/library/{id}/review`, `GET /api/v1/reviews/mine`, `GET /api/v1/reviews/public` |
 | Goals & stats | `GET /api/v1/dashboard`, `GET /api/v1/analytics/{year}`, `GET /api/v1/goals`, `GET/PUT/DELETE /api/v1/goals/{year}` |
 | Shelves | `GET/POST /api/v1/shelves`, `PUT/DELETE /api/v1/shelves/{id}`, `PUT/DELETE /api/v1/shelves/{id}/entries/{entryId}` |
-| Other | `GET /api/v1/recommendations`, `GET /api/v1/export/library.csv`, `GET /api/v1/export/library.json`, `POST /api/v1/import/library.csv` (multipart, bearer token) |
+| Other | `GET /api/v1/recommendations`, `POST /api/v1/recommendations/{bookId}/dismiss`, `DELETE /api/v1/recommendations/dismissals`, `GET /api/v1/export/library.csv`, `GET /api/v1/export/library.json`, `POST /api/v1/import/library.csv` (multipart, bearer token) |
 | Health | `GET /health/live`, `GET /health/ready` (includes the database) |
 
 List endpoints return `{ items, page, pageSize, totalCount, totalPages, hasPrevious, hasNext }`. Errors use RFC 7807 problem details with a `traceId` (400 validation, 401, 404, 409 conflict, 429 rate limited, 503 catalogue unavailable, 500 without internal details).
@@ -243,4 +254,8 @@ Only `Title` is required; header names are case-insensitive and columns may appe
 * Editing or deleting a reading session never moves the bookmark backwards.
 * Catalogue caching is in-memory (per instance).
 * Rate limiting of catalogue searches applies to the REST API; searches made from the Blazor UI rely on caching and provider cooldowns.
+* The prototype shows a notifications bell; there is no notification system, so the bell is not shown.
+* Discover shows search, subjects and your own recommendations. The prototype's hand-curated collections ("Short novels for long evenings", "New and notable") are not invented.
+* Settings has no favourite-genre picker, default-status choice or pages/percentage switch, and goals have no "show on profile" switch. These need backend support that does not exist yet, so the controls are omitted rather than faked. Profile photos are an https:// link, not an upload.
+* The theme choice is per device (browser storage), not per account.
 * Public profiles are discoverable by name/handle only; there is no activity feed or messaging by design.

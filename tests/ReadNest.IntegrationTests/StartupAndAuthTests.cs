@@ -39,13 +39,26 @@ public sealed class StartupAndAuthTests(ReadNestFactory factory)
 
         var home = await client.GetAsync("/");
         Assert.Equal(HttpStatusCode.OK, home.StatusCode);
-        Assert.Contains("A calm home for every book you read.", await home.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Contains("A home for every book", await home.Content.ReadAsStringAsync(), StringComparison.Ordinal);
         Assert.Equal("nosniff", home.Headers.GetValues("X-Content-Type-Options").Single());
         Assert.Equal("DENY", home.Headers.GetValues("X-Frame-Options").Single());
         Assert.True(home.Headers.Contains("Content-Security-Policy"));
 
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/Account/Login")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/Account/Register")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Unknown_pages_return_404_with_the_not_found_page()
+    {
+        // Regression: routing ran before the status-code middleware, so re-executed 404s came back empty.
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/no-such-page");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Contains("find that page", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/v1/no-such-endpoint")).StatusCode);
     }
 
     [Fact]

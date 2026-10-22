@@ -1,0 +1,134 @@
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Library
+@using ReadNest.Application.Reviews
+@inject LibraryService Library
+@inject ReviewService Reviews
+
+@* Finish a book: optional rating and a finish date that cannot be in the future. Offers Undo. *@
+<Modal Title="@("You finished " + Title + "?")" Open="Open" OpenChanged="OnOpenChanged">
+    <ChildContent>
+        <div style="display:flex; gap:16px; align-items:center">
+            <div style="width:64px; flex:none"><BookCover Title="@Title" Author="@Author" Url="@CoverUrl" Isbn="@Isbn" Shadow="md" /></div>
+            <p class="rn-mb-0" style="font-size:16px; line-height:1.55">It moves to Read and counts toward your @((_date ?? _today).Year) goal. Add a rating if you like; you can change it later.</p>
+        </div>
+        <div class="rn-field">
+            <span class="rn-label">Your rating <span class="optional">· @StarInput.Describe(_rating)</span></span>
+            <StarInput @bind-Value="_rating" ShowText="false" />
+        </div>
+        <div class="rn-field">
+            <label class="rn-label" for="@(_id + "-date")">Finished on</label>
+            <input id="@(_id + "-date")" class="rn-input @(DateError is null ? null : "invalid")" type="date" max="@_today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)"
+                   value="@_date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="OnDateChanged" />
+        </div>
+        @if (DateError is not null)
+        {
+            <span class="rn-error-text" role="alert"><Icon Name="alert" />@DateError</span>
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="rn-btn rn-btn-secondary" @onclick="CloseAsync">Not yet</button>
+        <button type="button" class="rn-btn rn-btn-primary" data-autofocus disabled="@(IsBusy || DateError is not null)" @onclick="SaveAsync"><Icon Name="check" />Mark as read</button>
+    </Footer>
+</Modal>
+
+@code {
+    private readonly string _id = "finish-" + Guid.NewGuid().ToString("N")[..8];
+    private DateOnly _today = DateOnly.FromDateTime(DateTime.UtcNow);
+    private DateOnly? _date;
+    private int? _rating;
+    private bool _wasOpen;
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter, EditorRequired] public Guid UserId { get; set; }
+    [Parameter, EditorRequired] public Guid EntryId { get; set; }
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Author { get; set; }
+    [Parameter] public string? CoverUrl { get; set; }
+    [Parameter] public string? Isbn { get; set; }
+    [Parameter] public ReadingStatus CurrentStatus { get; set; }
+    [Parameter] public int? CurrentRating { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private string? DateError => _date switch
+    {
+        null => "Choose the day you finished it.",
+        var d when d > _today => "That date is in the future.",
+        _ => null,
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Open && !_wasOpen)
+        {
+            _wasOpen = true;
+            _rating = CurrentRating;
+            try
+            {
+                _today = await Library.GetTodayAsync(UserId, ComponentToken);
+            }
+            catch (Exception ex) when (Describe(ex) is not null)
+            {
+                // The server validates the date again on save.
+            }
+
+            _date = _today;
+        }
+        else if (!Open)
+        {
+            _wasOpen = false;
+        }
+    }
+
+    private void OnDateChanged(ChangeEventArgs e) =>
+        _date = DateOnly.TryParseExact(e.Value?.ToString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+
+    private async Task SaveAsync()
+    {
+        if (DateError is not null)
+        {
+            return;
+        }
+
+        var userId = UserId;
+        var entryId = EntryId;
+        var previousStatus = CurrentStatus;
+        var previousRating = CurrentRating;
+        var rating = _rating;
+        var date = _date;
+        var ok = await RunAsync(
+            async () =>
+            {
+                await Library.UpdateStatusAsync(userId, entryId, new UpdateStatusRequest(ReadingStatus.Read, date), ComponentToken);
+                if (rating != previousRating)
+                {
+                    await Reviews.SetRatingAsync(userId, entryId, rating, ComponentToken);
+                }
+            },
+            "Marked as read. " + Title + " is on your Read shelf.",
+            undo: async () =>
+            {
+                await Library.UpdateStatusAsync(userId, entryId, new UpdateStatusRequest(previousStatus), CancellationToken.None);
+                if (rating != previousRating)
+                {
+                    await Reviews.SetRatingAsync(userId, entryId, previousRating, CancellationToken.None);
+                }
+
+                await OnSaved.InvokeAsync();
+            });
+        if (ok)
+        {
+            await CloseAsync();
+            await OnSaved.InvokeAsync();
+        }
+    }
+
+    private async Task OnOpenChanged(bool open)
+    {
+        Open = open;
+        _wasOpen = open;
+        await OpenChanged.InvokeAsync(open);
+    }
+
+    private Task CloseAsync() => OnOpenChanged(false);
+}

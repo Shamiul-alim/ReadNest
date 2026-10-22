@@ -74,15 +74,24 @@ public sealed class LibraryService(IReadNestDbContextFactory dbFactory, BookCata
     /// Moves the bookmark. When the page moves forward and <see cref="UpdateProgressRequest.RecordSession"/> is set,
     /// the pages in between are recorded as today's reading session, so statistics reflect the progress.
     /// </summary>
-    public async Task<LibraryEntryDetailsDto> UpdateProgressAsync(Guid userId, Guid entryId, UpdateProgressRequest request, CancellationToken cancellationToken)
+    public async Task<LibraryEntryDetailsDto> UpdateProgressAsync(Guid userId, Guid entryId, UpdateProgressRequest request, CancellationToken cancellationToken) =>
+        (await ApplyProgressAsync(userId, entryId, request, cancellationToken)).Entry;
+
+    /// <summary>
+    /// Same as <see cref="UpdateProgressAsync"/>, and also reports what changed so the caller can offer Undo:
+    /// the previous page and status, and the session recorded for the new pages (if any).
+    /// </summary>
+    public async Task<ProgressUpdateResult> ApplyProgressAsync(Guid userId, Guid entryId, UpdateProgressRequest request, CancellationToken cancellationToken)
     {
         await using var db = await dbFactory.CreateAsync(cancellationToken);
         var entry = await LoadOwnedAsync(db, userId, entryId, cancellationToken);
         var today = await clock.GetTodayAsync(db, userId, cancellationToken);
         var now = clock.UtcNow;
         var previousPage = entry.CurrentPage;
+        var previousStatus = entry.Status;
         entry.ValidatePage(request.CurrentPage, "currentPage");
 
+        Guid? recordedSessionId = null;
         if (request.RecordSession && request.CurrentPage > previousPage)
         {
             var duplicate = await db.ReadingSessions.AnyAsync(
@@ -90,11 +99,43 @@ public sealed class LibraryService(IReadNestDbContextFactory dbFactory, BookCata
                 cancellationToken);
             if (!duplicate)
             {
-                db.ReadingSessions.Add(ReadingSession.Create(entry, today, previousPage, request.CurrentPage, request.DurationMinutes ?? 0, null, today, now));
+                var session = ReadingSession.Create(entry, today, previousPage, request.CurrentPage, request.DurationMinutes ?? 0, null, today, now);
+                db.ReadingSessions.Add(session);
+                recordedSessionId = session.Id;
             }
         }
 
         entry.UpdateProgress(request.CurrentPage, today, now);
+        await db.SaveChangesAsync(cancellationToken);
+        return new ProgressUpdateResult(await GetEntryAsync(userId, entryId, cancellationToken), previousPage, previousStatus, recordedSessionId);
+    }
+
+    /// <summary>
+    /// Reverses <see cref="ApplyProgressAsync"/>: removes the session it recorded, puts the bookmark back and
+    /// restores the previous status.
+    /// </summary>
+    public async Task<LibraryEntryDetailsDto> UndoProgressAsync(Guid userId, Guid entryId, ProgressUpdateResult change, CancellationToken cancellationToken)
+    {
+        await using var db = await dbFactory.CreateAsync(cancellationToken);
+        var entry = await LoadOwnedAsync(db, userId, entryId, cancellationToken);
+        var today = await clock.GetTodayAsync(db, userId, cancellationToken);
+        var now = clock.UtcNow;
+        if (change.RecordedSessionId is { } sessionId)
+        {
+            var session = await db.ReadingSessions.FirstOrDefaultAsync(s => s.Id == sessionId && s.UserBookId == entry.Id, cancellationToken);
+            if (session is not null)
+            {
+                db.ReadingSessions.Remove(session);
+            }
+        }
+
+        entry.ValidatePage(change.PreviousPage, "currentPage");
+        entry.UpdateProgress(change.PreviousPage, today, now);
+        if (entry.Status != change.PreviousStatus)
+        {
+            entry.ChangeStatus(change.PreviousStatus, today, null, now);
+        }
+
         await db.SaveChangesAsync(cancellationToken);
         return await GetEntryAsync(userId, entryId, cancellationToken);
     }
@@ -371,7 +412,8 @@ public static class LibraryProjections
         ub.CompletedOn,
         ub.LastReadOn,
         ub.AddedAtUtc,
-        ub.UpdatedAtUtc);
+        ub.UpdatedAtUtc,
+        ub.Book.Isbn13);
 
     public static readonly System.Linq.Expressions.Expression<Func<UserBook, LibraryEntryDetailsDto>> Details = ub => new LibraryEntryDetailsDto(
         ub.Id,
@@ -401,5 +443,6 @@ public static class LibraryProjections
         ub.ShelfEntries.OrderBy(s => s.Shelf.Name).Select(s => new ShelfRefDto(s.ShelfId, s.Shelf.Name)).ToList(),
         ub.Sessions.Count,
         ub.Notes.Count,
-        ub.Loans.Any(l => l.ReturnedOn == null));
+        ub.Loans.Any(l => l.ReturnedOn == null),
+        ub.Book.Isbn13);
 }

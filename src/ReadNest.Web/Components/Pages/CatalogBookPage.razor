@@ -15,79 +15,91 @@
 }
 else if (_error is not null)
 {
-    <PageHeader Title="Book unavailable" />
-    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
-    <p class="mt-3"><a href="explore">Back to search</a></p>
+    <div class="rn-page tight">
+        <BackLink Href="explore" Text="Discover" />
+        <ErrorAlert Message="@_error" Title="The catalogue didn’t respond" OnRetry="RefreshAsync" />
+    </div>
 }
 else if (_book is not null)
 {
-    <nav class="rn-breadcrumb" aria-label="Breadcrumb"><a href="explore">Explore</a> <Icon Name="chevron-right" /> <span>@_book.Title</span></nav>
-    <section class="rn-book-hero">
-        <BookCover Title="@_book.Title" Author="@(_book.Authors.Count > 0 ? _book.Authors[0] : null)" Url="@_book.CoverUrl" Size="lg" Decorative="false" />
-        <div>
-            <h1 tabindex="-1">@_book.Title</h1>
-            @if (_book.Subtitle is not null)
-            {
-                <div class="rn-subtitle">@_book.Subtitle</div>
-            }
-            <p class="rn-muted">
-                @(_book.Authors.Count > 0 ? "by " + string.Join(", ", _book.Authors) : "Author unknown")
-            </p>
-
-            @if (_userId is not null)
-            {
-                <div class="rn-card tight rn-flex rn-flex-wrap">
-                    <label class="rn-label" for="add-status">Add to my library as</label>
-                    <select id="add-status" class="rn-select" style="width:auto" @bind="_status">
-                        @foreach (var status in Enum.GetValues<ReadingStatus>())
-                        {
-                            <option value="@status">@status.ToDisplayName()</option>
-                        }
-                    </select>
-                    <button type="button" class="rn-btn rn-btn-primary" disabled="@IsBusy" @onclick="AddAsync"><Icon Name="plus" /> Add to library</button>
+    var genres = CategoryCleaner.Clean(_book.Categories);
+    <div class="rn-page">
+        <div style="display:flex; flex-direction:column; gap:22px">
+            <BackLink Href="explore" Text="Discover" />
+            <div class="rn-book-hero">
+                <div class="rn-book-hero-aside">
+                    <BookCover Title="@_book.Title" Author="@First" Url="@_book.CoverUrl" Isbn="@_book.Isbn13" Size="lg" Shadow="lg" Class="fill" Decorative="false" />
                 </div>
-            }
-            else
-            {
-                <a class="rn-btn rn-btn-primary" href="@("Account/Login?returnUrl=" + Uri.EscapeDataString(Navigation.ToBaseRelativePath(Navigation.Uri)))">Log in to add this book</a>
-            }
-
-            <dl class="rn-facts">
-                <div class="rn-fact"><dt>Published</dt><dd>@(_book.PublishedDate ?? "Unknown")</dd></div>
-                <div class="rn-fact"><dt>Publisher</dt><dd>@(_book.Publisher ?? "Unknown")</dd></div>
-                <div class="rn-fact"><dt>Pages</dt><dd>@(_book.PageCount?.ToString("N0") ?? "Unknown")</dd></div>
-                <div class="rn-fact"><dt>Language</dt><dd>@(_book.Language?.ToUpperInvariant() ?? "Unknown")</dd></div>
-                <div class="rn-fact"><dt>ISBN-13</dt><dd class="rn-mono">@(_book.Isbn13 ?? "—")</dd></div>
-                <div class="rn-fact"><dt>ISBN-10</dt><dd class="rn-mono">@(_book.Isbn10 ?? "—")</dd></div>
-            </dl>
-
-            @if (CategoryCleaner.Clean(_book.Categories) is { Count: > 0 } genres)
-            {
-                <div class="rn-chips mb-3">
-                    @foreach (var genre in genres)
+                <div class="rn-book-hero-main">
+                    @if (genres.Count > 0)
                     {
-                        <a class="rn-chip" href="@("explore?field=Subject&q=" + Uri.EscapeDataString(genre))">@genre</a>
+                        <div class="rn-chips" style="gap:6px">
+                            @foreach (var genre in genres)
+                            {
+                                <a class="rn-tag" href="@("explore?field=Subject&q=" + Uri.EscapeDataString(genre))">@genre</a>
+                            }
+                        </div>
                     }
+                    <h1 tabindex="-1">@_book.Title</h1>
+                    @if (_book.Subtitle is not null)
+                    {
+                        <div class="rn-subtitle">@_book.Subtitle</div>
+                    }
+                    <div class="rn-byline">@(_book.Authors.Count > 1 ? "by " : "by ")<strong>@(_book.Authors.Count > 0 ? string.Join(", ", _book.Authors) : "Unknown author")</strong></div>
+                    <div class="rn-subtle" style="font-size:15px">@Meta</div>
+                    <div class="rn-status-panel">
+                        @if (_userId is null)
+                        {
+                            <p class="rn-mb-0" style="font-size:16px">Sign in to keep this book in your library, track your place and save notes.</p>
+                            <div class="rn-actions">
+                                <a class="rn-btn rn-btn-primary" href="@("Account/Login?returnUrl=" + Uri.EscapeDataString(Navigation.ToBaseRelativePath(Navigation.Uri)))">Sign in to add it</a>
+                                <a class="rn-btn rn-btn-secondary" href="Account/Register">Create an account</a>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="rn-mb-0" style="font-size:16px">Not in your library yet.</p>
+                            <div class="rn-actions">
+                                <button type="button" class="rn-btn rn-btn-primary" disabled="@IsBusy" @onclick="() => AddAsync(ReadingStatus.WantToRead)"><Icon Name="bookmark" />Want to read</button>
+                                <button type="button" class="rn-btn rn-btn-secondary" disabled="@IsBusy" @onclick="() => AddAsync(ReadingStatus.CurrentlyReading)"><Icon Name="book-open" />Start reading</button>
+                            </div>
+                        }
+                    </div>
+                    <section aria-labelledby="about-h" class="rn-section rn-measure" style="gap:10px; margin-top:22px">
+                        <h2 id="about-h" class="rn-mb-0">About this book</h2>
+                        @if (!string.IsNullOrWhiteSpace(_book.Description))
+                        {
+                            <p class="rn-description">@_book.Description</p>
+                        }
+                        else
+                        {
+                            <p class="rn-subtle rn-mb-0">No description available for this edition.</p>
+                        }
+                    </section>
+                    <dl class="rn-facts" style="margin-top:12px">
+                        <div class="rn-fact"><dt>Publisher</dt><dd>@(_book.Publisher ?? "Not available")</dd></div>
+                        <div class="rn-fact"><dt>Published</dt><dd>@(_book.PublishedDate ?? "Not available")</dd></div>
+                        <div class="rn-fact"><dt>Pages</dt><dd>@(_book.PageCount?.ToString("N0") ?? "Not available")</dd></div>
+                        <div class="rn-fact"><dt>Language</dt><dd>@(_book.Language?.ToUpperInvariant() ?? "Not available")</dd></div>
+                        <div class="rn-fact"><dt>ISBN</dt><dd class="rn-mono">@(_book.Isbn13 ?? _book.Isbn10 ?? "Not available")</dd></div>
+                        <div class="rn-fact">
+                            <dt>Source</dt>
+                            <dd>
+                                @if (InputSanitizer.SafeExternalUrl(_book.InfoUrl) is { } infoUrl)
+                                {
+                                    <a href="@infoUrl" target="_blank" rel="noopener noreferrer nofollow">@_book.Provider.ToDisplayName() <Icon Name="external" Size="14" /></a>
+                                }
+                                else
+                                {
+                                    @_book.Provider.ToDisplayName()
+                                }
+                            </dd>
+                        </div>
+                    </dl>
                 </div>
-            }
-
-            @if (!string.IsNullOrWhiteSpace(_book.Description))
-            {
-                <div class="rn-description pre-wrap">@_book.Description</div>
-            }
-            else
-            {
-                <p class="rn-subtle">The catalogue has no description for this book.</p>
-            }
-
-            @if (InputSanitizer.SafeExternalUrl(_book.InfoUrl) is { } infoUrl)
-            {
-                <p class="mt-3 rn-subtle">
-                    Source: <a href="@infoUrl" target="_blank" rel="noopener noreferrer nofollow">@_book.Provider.ToDisplayName() <Icon Name="external" /></a>
-                </p>
-            }
+            </div>
         </div>
-    </section>
+    </div>
 }
 
 @code {
@@ -99,7 +111,28 @@ else if (_book is not null)
     private CatalogBook? _book;
     private bool _loading = true;
     private string? _error;
-    private ReadingStatus _status = ReadingStatus.WantToRead;
+
+    private string? First => _book is { Authors.Count: > 0 } b ? b.Authors[0] : null;
+
+    private string Meta
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (_book!.Publisher is { } publisher)
+            {
+                parts.Add(publisher);
+            }
+
+            if (_book.PublishedYear is { } year)
+            {
+                parts.Add(year.ToString(CultureInfo.InvariantCulture));
+            }
+
+            parts.Add(_book.PageCount is { } pages ? Formats.Count(pages, "page") : "Page count not available");
+            return string.Join(" · ", parts);
+        }
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -113,7 +146,7 @@ else if (_book is not null)
         _error = null;
         if (!Enum.TryParse(Provider, ignoreCase: true, out _provider) || !Enum.IsDefined(_provider))
         {
-            _error = "Unknown book source.";
+            _error = "That link points to a book source ReadNest doesn’t know.";
             _loading = false;
             return;
         }
@@ -129,7 +162,7 @@ else if (_book is not null)
         _loading = false;
     }
 
-    private async Task AddAsync()
+    private async Task AddAsync(ReadingStatus status)
     {
         if (_userId is not { } userId || _book is null)
         {
@@ -137,10 +170,12 @@ else if (_book is not null)
         }
 
         AddEntryResult? result = null;
-        var ok = await RunAsync(async () => result = await Library.AddCatalogBookAsync(userId, _book, _status, ComponentToken));
+        var ok = await RunAsync(async () => result = await Library.AddCatalogBookAsync(userId, _book, status, ComponentToken));
         if (ok && result is not null)
         {
-            Toasts.Success(result.AlreadyInLibrary ? "This book is already in your library." : "Added to your library.");
+            Toasts.Success(result.AlreadyInLibrary
+                ? "This book is already in your library."
+                : status == ReadingStatus.WantToRead ? "Added to Want to read." : "Started. Happy reading.");
             Navigation.NavigateTo($"books/{result.BookId}");
         }
     }

@@ -1,20 +1,28 @@
+@* Reassure first, say what happened, offer Try again. *@
 @if (!string.IsNullOrEmpty(Message))
 {
-    <div class="rn-alert rn-alert-error" role="alert">
-        <Icon Name="alert" />
-        <div class="rn-alert-body">
-            <strong>@Title</strong>
-            <div>@Message</div>
-        </div>
+    <div class="rn-retry @(Compact ? "compact" : null)" role="alert">
+        @if (Compact)
+        {
+            <strong style="display:flex; align-items:center; gap:10px"><Icon Name="@IconName" />@Title</strong>
+        }
+        else
+        {
+            <span class="rn-icon-circle"><Icon Name="@IconName" /></span>
+            <h2>@Title</h2>
+        }
+        <p>@Message</p>
         @if (OnRetry.HasDelegate)
         {
-            <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" @onclick="OnRetry"><Icon Name="refresh" /> Retry</button>
+            <button type="button" class="rn-btn rn-btn-primary" @onclick="OnRetry"><Icon Name="refresh" />Try again</button>
         }
     </div>
 }
 
 @code {
     [Parameter] public string? Message { get; set; }
-    [Parameter] public string Title { get; set; } = "We couldn't load this.";
+    [Parameter] public string Title { get; set; } = "We couldn’t load this page";
     [Parameter] public EventCallback OnRetry { get; set; }
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public string IconName { get; set; } = "wifi-off";
 }

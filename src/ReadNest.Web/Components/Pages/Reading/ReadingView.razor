@@ -1,0 +1,351 @@
+@page "/reading/{EntryId:guid}"
+@attribute [Authorize]
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Library
+@using ReadNest.Application.Notes
+@using ReadNest.Application.Reading
+@using ReadNest.Web.Components.Book
+@inject LibraryService Library
+@inject ReadingSessionService Sessions
+@inject NoteService Notes
+
+<AppTitle Text="@(_entry is null ? "Reading" : "Reading " + _entry.Title)" />
+
+@if (_error is not null)
+{
+    <div class="rn-page tight">
+        <BackLink Href="library/currently-reading" />
+        <ErrorAlert Message="@_error" Title="We couldn’t open the reading view" OnRetry="RefreshAsync" />
+    </div>
+}
+else if (_entry is null || _sessions is null)
+{
+    <LoadingIndicator Text="Opening your book…" />
+}
+else
+{
+    var active = _entry.Status is ReadingStatus.CurrentlyReading or ReadingStatus.Paused;
+    <div class="rn-page">
+        <div style="display:flex; flex-direction:column; gap:22px">
+            <BackLink Href="@("books/" + _entry.BookId)" Text="Book details" />
+            <section aria-label="Reading progress" class="rn-reading-hero">
+                <a class="rn-cover-button" href="@("books/" + _entry.BookId)" aria-label="@("Book details for " + _entry.Title)">
+                    <BookCover Title="@_entry.Title" Author="@First" Url="@_entry.CoverUrl" Isbn="@_entry.Isbn13" Shadow="lg" />
+                </a>
+                <div class="rn-reading-hero-main">
+                    <div class="rn-kicker"><Icon Name="@StatusBadge.IconFor(_entry.Status)" /><span>@Kicker</span></div>
+                    <h1 tabindex="-1">@_entry.Title</h1>
+                    <div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; font-size:17px">
+                        <span>@AuthorsText</span>
+                        <a class="rn-btn rn-btn-ghost" href="@("books/" + _entry.BookId)">Book details<Icon Name="chevron-right" /></a>
+                    </div>
+                    @if (_entry.Status == ReadingStatus.Paused)
+                    {
+                        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:12px 18px; padding:16px 20px; border-radius:var(--radius-lg); background:var(--color-accent-100); color:var(--color-accent-900); border:1px dashed var(--color-accent-400)">
+                            <span style="display:flex; gap:10px; align-items:flex-start; flex:1 1 260px; font-size:15px; line-height:1.5"><Icon Name="pause" />Paused@(_entry.LastReadOn is { } l ? " · last read " + Formats.RelativeLower(l, _today) : "")@(". Your place is saved; resume whenever you like.")</span>
+                            <button type="button" class="rn-btn rn-btn-primary" disabled="@IsBusy" @onclick="ResumeAsync">Resume reading</button>
+                        </div>
+                    }
+                    else if (!active)
+                    {
+                        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:12px 18px; padding:16px 20px; border-radius:var(--radius-lg); background:var(--color-surface)">
+                            <span style="flex:1 1 260px; font-size:15px">@(_entry.Status == ReadingStatus.Read ? "You’ve finished this book. Start it again to track a reread." : "You’re not reading this book right now. Start it to track progress and sessions.")</span>
+                            <button type="button" class="rn-btn rn-btn-primary" disabled="@IsBusy" @onclick="StartAsync">Start reading</button>
+                        </div>
+                    }
+                    <div class="rn-reading-pct">
+                        <span class="rn-big">@(_entry.ProgressPercent is { } pct ? ProgressBar.Format(pct) : "—")</span>
+                        <span>@ProgressBar.PageText(_entry.CurrentPage, _entry.TotalPages)</span>
+                    </div>
+                    @if (_entry.TotalPages is null)
+                    {
+                        <p class="rn-subtle rn-mb-0">Add the page count of your edition to see a percentage. <button type="button" class="rn-link-button" @onclick="() => _detailsOpen = true">Add page count</button></p>
+                    }
+                    else
+                    {
+                        <ProgressBar CurrentPage="_entry.CurrentPage" TotalPages="_entry.TotalPages" ShowLabel="false" Size="lg" Ticks="true" Label="@("Progress through " + _entry.Title)" />
+                    }
+                    <dl class="rn-facts tight" style="margin-top:10px">
+                        <div class="rn-fact">
+                            <dt>Pages left</dt>
+                            <dd class="big">@(_entry.TotalPages is { } total ? Formats.Number(Math.Max(0, total - _entry.CurrentPage)) : "—")</dd>
+                            <dd class="sub">@(_entry.TotalPages is { } t ? "of " + Formats.Number(t) : "page count unknown")</dd>
+                        </div>
+                        <div class="rn-fact">
+                            <dt>Time read</dt>
+                            <dd class="big">@(TotalMinutes > 0 ? Formats.Duration(TotalMinutes) : "—")</dd>
+                            <dd class="sub">across @Formats.Count(_sessions.TotalCount, "session")</dd>
+                        </div>
+                        <div class="rn-fact">
+                            <dt>Pace</dt>
+                            <dd class="big">@(PagesPerDay is { } pace ? pace.ToString("0.#", CultureInfo.CurrentCulture) + " pages/day" : "—")</dd>
+                            <dd class="sub">over the last 14 days</dd>
+                        </div>
+                        <div class="rn-fact">
+                            <dt>Finish by</dt>
+                            <dd class="big">@(FinishBy is { } by ? Formats.Short(by, _today) : "—")</dd>
+                            <dd class="sub">@(FinishBy is null ? "log a few sessions to see an estimate" : "at your current pace")</dd>
+                        </div>
+                    </dl>
+                    <div class="rn-actions" style="padding-top:16px">
+                        <button type="button" class="rn-btn rn-btn-primary" style="min-height:50px; font-size:16px" @onclick="() => _progressOpen = true"><Icon Name="bookmark" />Update progress</button>
+                        <button type="button" class="rn-btn rn-btn-secondary" style="min-height:50px; font-size:16px" @onclick="OpenNewSession"><Icon Name="clock" />Log a session</button>
+                    </div>
+                    <div class="rn-actions tight">
+                        @if (_entry.Status != ReadingStatus.Read)
+                        {
+                            <button type="button" class="rn-btn rn-btn-ghost" @onclick="() => _finishOpen = true"><Icon Name="check-circle" />Mark as finished</button>
+                        }
+                        @if (_entry.Status == ReadingStatus.CurrentlyReading)
+                        {
+                            <button type="button" class="rn-btn rn-btn-ghost" disabled="@IsBusy" @onclick="PauseAsync"><Icon Name="pause" />Pause</button>
+                        }
+                        @if (active)
+                        {
+                            <button type="button" class="rn-btn rn-btn-ghost" disabled="@IsBusy" @onclick="StopAsync"><Icon Name="slash" />Stop reading</button>
+                        }
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="rn-columns">
+            <section aria-labelledby="hist-h" class="rn-section" style="gap:6px">
+                <div class="rn-section-header">
+                    <h2 id="hist-h">Reading history</h2>
+                    <button type="button" class="rn-btn rn-btn-ghost" @onclick="OpenNewSession"><Icon Name="plus" />Log a session</button>
+                </div>
+                <p class="rn-mb-0" style="font-size:15px; color:var(--color-neutral-700); margin-bottom:6px">@HistorySummary</p>
+                @if (_sessions.Items.Count == 0)
+                {
+                    <div class="rn-hint-card">
+                        <strong>No sessions yet</strong>
+                        <span>Updating your page records a session automatically. Log one by hand to add time and a reflection.</span>
+                    </div>
+                }
+                else
+                {
+                    <ol class="rn-timeline">
+                        @foreach (var session in _sessions.Items)
+                        {
+                            <li @key="session.Id">
+                                <span class="rn-icon-circle sm sage" aria-hidden="true"><Icon Name="clock" /></span>
+                                <div>
+                                    <div class="head"><span>@Formats.Relative(session.ReadOn, _today)</span><span>@Formats.Count(session.PagesRead, "page")</span></div>
+                                    <div class="meta">p. @session.StartPage.ToString("N0")–@session.EndPage.ToString("N0")@(session.DurationMinutes > 0 ? " · " + Formats.Duration(session.DurationMinutes) : "")</div>
+                                    @if (!string.IsNullOrWhiteSpace(session.Reflection))
+                                    {
+                                        <p class="pre-wrap">@session.Reflection</p>
+                                    }
+                                </div>
+                                <span class="tools">
+                                    <button type="button" class="rn-btn rn-btn-ghost rn-btn-icon" aria-label="@("Edit the session from " + Formats.Long(session.ReadOn))" @onclick="() => OpenEditSession(session)"><Icon Name="pencil" /></button>
+                                    <button type="button" class="rn-btn rn-btn-ghost rn-btn-icon" aria-label="@("Delete the session from " + Formats.Long(session.ReadOn))" @onclick="() => DeleteSessionAsync(session)"><Icon Name="trash" /></button>
+                                </span>
+                            </li>
+                        }
+                    </ol>
+                    @if (_sessions.TotalCount > _sessions.Items.Count)
+                    {
+                        <a href="@("history?entry=" + _entry.Id)" style="padding-top:8px">All @_sessions.TotalCount sessions</a>
+                    }
+                }
+            </section>
+            <section aria-labelledby="rnotes-h" class="rn-section" style="gap:14px">
+                <div class="rn-section-header">
+                    <h2 id="rnotes-h">Notes and quotes</h2>
+                    <div class="rn-actions tight">
+                        <button type="button" class="rn-btn rn-btn-ghost" @onclick="() => OpenNewNote(NoteType.Quote)"><Icon Name="quote" />Save a quote</button>
+                        <button type="button" class="rn-btn rn-btn-ghost" @onclick="() => OpenNewNote(NoteType.General)"><Icon Name="plus" />Note</button>
+                    </div>
+                </div>
+                @if (_notes is { Items.Count: > 0 })
+                {
+                    @foreach (var note in _notes.Items)
+                    {
+                        <NoteCard Note="note" ShowBook="false" OnEdit="() => OpenEditNote(note)" @key="note.Id" />
+                    }
+                    @if (_notes.TotalCount > _notes.Items.Count)
+                    {
+                        <a href="@("notes?entry=" + _entry.Id)">All @_notes.TotalCount notes from this book</a>
+                    }
+                }
+                <div class="rn-hint-card">
+                    <strong>Something worth keeping?</strong>
+                    <span>Quotes, takeaways and lessons you save here appear in your journal, linked back to the page.</span>
+                </div>
+            </section>
+        </div>
+
+        <div class="rn-floatbar-spacer rn-only-mobile" aria-hidden="true"></div>
+        <div class="rn-floatbar">
+            <button type="button" class="rn-btn rn-btn-primary" @onclick="() => _progressOpen = true"><Icon Name="bookmark" />Update</button>
+            <button type="button" class="rn-btn rn-btn-secondary" @onclick="OpenNewSession"><Icon Name="clock" />Session</button>
+        </div>
+    </div>
+
+    <ProgressDialog @bind-Open="_progressOpen" UserId="_userId" EntryId="_entry.Id" Title="@_entry.Title" Author="@AuthorsText" CoverUrl="@_entry.CoverUrl" Isbn="@_entry.Isbn13"
+                    CurrentPage="_entry.CurrentPage" TotalPages="_entry.TotalPages" OnSaved="RefreshAsync" OnFinishRequested="() => _finishOpen = true" />
+    <SessionDialog @bind-Open="_sessionOpen" UserId="_userId" EntryId="_entry.Id" BookTitle="@_entry.Title" StartPage="_entry.CurrentPage" TotalPages="_entry.TotalPages"
+                   Session="_editingSession" OnSaved="RefreshAsync" />
+    <FinishDialog @bind-Open="_finishOpen" UserId="_userId" EntryId="_entry.Id" Title="@_entry.Title" Author="@AuthorsText" CoverUrl="@_entry.CoverUrl" Isbn="@_entry.Isbn13"
+                  CurrentStatus="_entry.Status" CurrentRating="_entry.Rating" OnSaved="RefreshAsync" />
+    <NoteDialog @bind-Open="_noteOpen" UserId="_userId" EntryId="_entry.Id" Note="_editingNote" InitialType="_newNoteType"
+                SuggestedPage="@(_entry.CurrentPage > 0 ? _entry.CurrentPage : null)" OnSaved="RefreshAsync" />
+    <EntryDetailsDialog @bind-Open="_detailsOpen" UserId="_userId" Entry="_entry" OnSaved="RefreshAsync" />
+    <ConfirmDialog @ref="_confirm" />
+}
+
+@code {
+    [Parameter] public Guid EntryId { get; set; }
+
+    private Guid _userId;
+    private LibraryEntryDetailsDto? _entry;
+    private PagedResult<ReadingSessionDto>? _sessions;
+    private PagedResult<NoteDto>? _notes;
+    private DateOnly _today;
+    private string? _error;
+    private bool _progressOpen;
+    private bool _sessionOpen;
+    private bool _finishOpen;
+    private bool _noteOpen;
+    private bool _detailsOpen;
+    private ReadingSessionDto? _editingSession;
+    private NoteDto? _editingNote;
+    private NoteType _newNoteType;
+    private ConfirmDialog _confirm = default!;
+
+    private string? First => _entry is { Authors.Count: > 0 } e ? e.Authors[0] : null;
+
+    private string AuthorsText => _entry is { Authors.Count: > 0 } e ? string.Join(", ", e.Authors) : "Unknown author";
+
+    private int TotalMinutes => _sessions?.Items.Sum(s => s.DurationMinutes) ?? 0;
+
+    private string Kicker => _entry!.Status switch
+    {
+        ReadingStatus.CurrentlyReading => _entry.StartedOn is { } s ? "Currently reading · since " + Formats.Short(s, _today) : "Currently reading",
+        ReadingStatus.Paused => "Paused",
+        ReadingStatus.Read => "Read",
+        ReadingStatus.DidNotFinish => "Did not finish",
+        _ => "Want to read",
+    };
+
+    /// <summary>Average pages per day over the last 14 days, from logged sessions.</summary>
+    private decimal? PagesPerDay
+    {
+        get
+        {
+            var from = _today.AddDays(-13);
+            var pages = _sessions?.Items.Where(s => s.ReadOn >= from).Sum(s => s.PagesRead) ?? 0;
+            return pages > 0 ? Math.Round(pages / 14m, 1) : null;
+        }
+    }
+
+    private DateOnly? FinishBy =>
+        _entry is { TotalPages: { } total } entry && PagesPerDay is { } pace && pace > 0 && total > entry.CurrentPage && entry.Status != ReadingStatus.Read
+            ? _today.AddDays((int)Math.Ceiling((total - entry.CurrentPage) / pace))
+            : null;
+
+    private string HistorySummary
+    {
+        get
+        {
+            var pages = _sessions!.Items.Sum(s => s.PagesRead);
+            return _sessions.TotalCount == 0
+                ? "Your sessions for this book will appear here."
+                : Formats.Count(pages, "page") + " across " + Formats.Count(_sessions.TotalCount, "session") + (TotalMinutes > 0 ? ", " + Formats.Duration(TotalMinutes) + " in all." : ".");
+        }
+    }
+
+    protected override async Task OnParametersSetAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _error = await LoadAsync(async () =>
+        {
+            _userId = await RequireUserIdAsync();
+            _today = await Library.GetTodayAsync(_userId, ComponentToken);
+            _entry = await Library.GetEntryAsync(_userId, EntryId, ComponentToken);
+            _sessions = await Sessions.GetHistoryAsync(_userId, new HistoryQuery(EntryId: EntryId, Page: 1, PageSize: 100), ComponentToken);
+            _notes = await Notes.SearchAsync(_userId, new NoteQuery(EntryId: EntryId, PageSize: 10), ComponentToken);
+        });
+    }
+
+    private async Task SetStatusAsync(ReadingStatus status, string message)
+    {
+        if (_entry is null)
+        {
+            return;
+        }
+
+        var entryId = _entry.Id;
+        var userId = _userId;
+        var previous = _entry.Status;
+        if (await RunAsync(
+                () => Library.UpdateStatusAsync(userId, entryId, new UpdateStatusRequest(status), ComponentToken),
+                message,
+                undo: previous == ReadingStatus.Read ? null : async () =>
+                {
+                    await Library.UpdateStatusAsync(userId, entryId, new UpdateStatusRequest(previous), CancellationToken.None);
+                    await RefreshAsync();
+                }))
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private Task ResumeAsync() => SetStatusAsync(ReadingStatus.CurrentlyReading, "Welcome back. Resumed.");
+
+    private Task StartAsync() => SetStatusAsync(ReadingStatus.CurrentlyReading, "Started. Happy reading.");
+
+    private Task PauseAsync() => SetStatusAsync(ReadingStatus.Paused, "Paused. Your place is saved.");
+
+    private async Task StopAsync()
+    {
+        if (_entry is not null && await _confirm.ConfirmAsync(
+                "Stop reading " + _entry.Title + "?",
+                "It moves to Did not finish. Your sessions and notes stay, and you can pick it up again any time.",
+                "Stop reading"))
+        {
+            await SetStatusAsync(ReadingStatus.DidNotFinish, "Moved to Did not finish.");
+        }
+    }
+
+    private void OpenNewSession()
+    {
+        _editingSession = null;
+        _sessionOpen = true;
+    }
+
+    private void OpenEditSession(ReadingSessionDto session)
+    {
+        _editingSession = session;
+        _sessionOpen = true;
+    }
+
+    private async Task DeleteSessionAsync(ReadingSessionDto session)
+    {
+        if (await _confirm.ConfirmAsync(
+                "Delete this session?",
+                $"The session from {Formats.Long(session.ReadOn)} ({Formats.Count(session.PagesRead, "page")}) will be removed from your history and statistics. Your current page stays where it is.",
+                "Delete session")
+            && await RunAsync(() => Sessions.DeleteAsync(_userId, session.Id, ComponentToken), "Session deleted."))
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private void OpenNewNote(NoteType type)
+    {
+        _editingNote = null;
+        _newNoteType = type;
+        _noteOpen = true;
+    }
+
+    private void OpenEditNote(NoteDto note)
+    {
+        _editingNote = note;
+        _noteOpen = true;
+    }
+}

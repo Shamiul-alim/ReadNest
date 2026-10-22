@@ -1,36 +1,43 @@
 @using ReadNest.Application.Library
-<article class="rn-book-card">
-    @if (Entry.IsFavorite)
-    {
-        <span class="rn-fav-flag" title="Favourite"><Icon Name="heart" Label="Favourite" /></span>
-    }
-    <a class="rn-book-card-link" href="@($"books/{Entry.BookId}")">
-        <BookCover Title="@Entry.Title" Author="@FirstAuthor" Url="@Entry.CoverUrl" Size="fill" />
-        <span class="rn-book-title">@Entry.Title</span>
+@* Grid book card: cover, title, author, status label, then progress (reading) or stars (rated).
+   Always five rows so the parent grid's subgrid keeps every row aligned. *@
+<article class="rn-book-card" role="listitem">
+    <a class="rn-cover-button" href="@Href" tabindex="-1" aria-hidden="true">
+        @if (Entry.IsFavorite)
+        {
+            <span class="rn-fav-flag" title="Favourite"><Icon Name="heart" /></span>
+        }
+        <BookCover Title="@Entry.Title" Author="@FirstAuthor" Url="@Entry.CoverUrl" Isbn="@Entry.Isbn13" />
     </a>
-    <span class="rn-book-author">@AuthorsText</span>
-    <div class="rn-book-meta">
+    <h3 class="rn-book-title" title="@Entry.Title"><a href="@Href" aria-label="@AriaLabel">@Entry.Title</a></h3>
+    <p class="rn-book-author" title="@AuthorsText">@AuthorsText</p>
+    <div style="padding-top:var(--space-3); display:flex; align-items:center; min-width:0">
         @if (ShowStatus)
         {
             <StatusBadge Status="Entry.Status" />
         }
-        <Stars Value="Entry.Rating" />
     </div>
-    @if (Entry.Status == ReadingStatus.CurrentlyReading)
-    {
-        <ProgressBar CurrentPage="Entry.CurrentPage" TotalPages="Entry.TotalPages" ShowLabel="false" />
-        <span class="rn-subtle">@ProgressText</span>
-    }
+    <div class="rn-book-foot" style="padding-top:var(--space-2)">
+        @if (Entry.Status is ReadingStatus.CurrentlyReading or ReadingStatus.Paused && Entry.ProgressPercent is { } percent)
+        {
+            <div class="rn-book-card-progress" aria-label="@(ProgressBar.Format(percent) + " read")">
+                <ProgressBar CurrentPage="Entry.CurrentPage" TotalPages="Entry.TotalPages" ShowLabel="false" Size="sm" />
+                <span>@ProgressBar.Format(percent)</span>
+            </div>
+        }
+        else if (Entry.Rating is not null)
+        {
+            <Stars Value="Entry.Rating" IconSize="14" />
+        }
+    </div>
 </article>
 
 @code {
     [Parameter, EditorRequired] public LibraryEntryDto Entry { get; set; } = default!;
     [Parameter] public bool ShowStatus { get; set; } = true;
 
+    private string Href => "books/" + Entry.BookId;
     private string? FirstAuthor => Entry.Authors.Count > 0 ? Entry.Authors[0] : null;
     private string AuthorsText => Entry.Authors.Count > 0 ? string.Join(", ", Entry.Authors) : "Unknown author";
-
-    private string ProgressText => Entry.ProgressPercent is { } p
-        ? p.ToString("0.#") + "% · page " + Entry.CurrentPage.ToString("N0")
-        : Entry.CurrentPage > 0 ? "Page " + Entry.CurrentPage.ToString("N0") : "Not started";
+    private string AriaLabel => "Open " + Entry.Title + " by " + AuthorsText;
 }

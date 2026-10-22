@@ -8,6 +8,8 @@
 
 <AppTitle Text="Reading challenges" />
 
+
+<div class="rn-page tight">
 <PageHeader Title="Reading challenges" Description="Read a number of books within a date range — on your own or with other readers. Progress counts books you mark as read during the challenge.">
     <Actions>
         @if (_userId is not null)
@@ -102,6 +104,7 @@ else
         </div>
     </EditForm>
 </Modal>
+</div>
 
 @code {
     private Guid? _userId;

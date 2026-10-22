@@ -1,71 +1,119 @@
 ﻿@page "/"
 @layout PublicLayout
 
-<AppTitle Text="Your personal library and reading tracker" />
+<AppTitle Text="A home for every book you’ve loved" />
 
-<section class="rn-hero">
-    <div>
-        <span class="rn-chip mb-3"><Icon Name="sparkles" /> Discover · Track · Learn</span>
-        <h1>A calm home for every book you read.</h1>
-        <p class="lead">
-            ReadNest keeps your reading life in one place: find books in public catalogues, organise them on shelves,
-            log your progress, and keep the quotes and lessons you never want to forget.
-        </p>
-        <div class="rn-flex rn-flex-wrap mt-4">
+@* The artwork on this page is illustrative and hidden from assistive technology; it shows no real reader's data. *@
+<section class="rn-wrap rn-hero">
+    <div class="rn-hero-copy">
+        <h1>A home for every book you’ve loved, and the next one.</h1>
+        <p>ReadNest keeps your library, your place in each book and the lines you underlined in one calm room, and helps you find what to read next without the noise.</p>
+        <div class="rn-actions" style="gap:12px">
             <AuthorizeView>
                 <Authorized>
-                    <a class="rn-btn rn-btn-primary rn-btn-lg" href="dashboard">Go to my dashboard <Icon Name="arrow-right" /></a>
-                    <a class="rn-btn rn-btn-secondary rn-btn-lg" href="explore">Explore books</a>
+                    <a class="rn-btn rn-btn-primary rn-btn-lg" href="dashboard">Open my library</a>
                 </Authorized>
                 <NotAuthorized>
-                    <a class="rn-btn rn-btn-primary rn-btn-lg" href="Account/Register">Start your library <Icon Name="arrow-right" /></a>
-                    <a class="rn-btn rn-btn-secondary rn-btn-lg" href="explore">Browse the catalogue</a>
+                    <a class="rn-btn rn-btn-primary rn-btn-lg" href="Account/Register">Start your library</a>
                 </NotAuthorized>
             </AuthorizeView>
+            <a class="rn-btn rn-btn-secondary rn-btn-lg" href="explore">Explore books</a>
         </div>
-        <p class="rn-subtle mt-3">Free to use. Your notes and private lists stay private.</p>
+        <span class="rn-subtle">Free and private by default. Export everything, any time.</span>
     </div>
     <div class="rn-hero-art" aria-hidden="true">
-        <BookCover Title="The Pragmatic Reader" Author="Your next favourite" Size="" />
-        <BookCover Title="Notes Worth Keeping" Author="A knowledge journal" Size="" />
-        <BookCover Title="One Page a Day" Author="Habits that last" Size="" />
-        <div class="rn-card tight rn-hero-card">
-            <div class="rn-flex rn-between"><strong>Currently reading</strong><span class="rn-status rn-status-CurrentlyReading">38.8%</span></div>
-            <div class="rn-subtle mb-2">Page 180 of 464</div>
-            <div class="rn-progress"><span style="width:38.8%"></span></div>
+        <div class="blob"></div>
+        <div class="dot"></div>
+        @foreach (var cover in HeroCovers)
+        {
+            <div class="c" style="@cover.Style"><BookCover Title="@cover.Title" Author="@cover.Author" Isbn="@cover.Isbn" Shadow="lg" /></div>
+        }
+        <div class="note" style="left:0; bottom:4%; width:min(260px, 52%)">
+            <span style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--color-accent-700)"><Icon Name="quote" Size="14" />Piranesi · p. 164</span>
+            <span style="font-size:14px; line-height:1.45">The tides chapter. Read it slowly on purpose.</span>
+        </div>
+        <div class="note" style="right:2%; top:30%; width:min(170px, 34%); padding:12px 14px">
+            <span style="font-size:12px; font-weight:700">Yearly goal</span>
+            <span class="rn-heading" style="font-size:24px; line-height:1">17 <span style="font-size:14px">of 20</span></span>
+            <span class="rn-progress sm"><span style="width:85%"></span></span>
         </div>
     </div>
 </section>
 
-<section class="rn-features" aria-label="Features">
-    <div class="rn-card">
-        <div class="rn-feature-icon"><Icon Name="compass" /></div>
-        <h2 class="h5">Discover</h2>
-        <p class="rn-muted rn-mb-0">Search by title, author, ISBN or subject across Google Books and Open Library, with automatic fallback if one is unavailable.</p>
+<section id="how" class="rn-wrap" style="display:flex; flex-direction:column; gap:36px; padding-bottom:clamp(56px, 8vw, 110px)">
+    <div style="display:flex; flex-direction:column; gap:10px; max-width:620px">
+        <h2 style="margin:0; font-size:clamp(30px, 3.6vw, 44px)">Three rooms, one home</h2>
+        <p class="rn-lede">Most reading apps are a catalogue with a tracker bolted on. ReadNest connects finding a book, reading it and remembering it.</p>
     </div>
-    <div class="rn-card">
-        <div class="rn-feature-icon"><Icon Name="library" /></div>
-        <h2 class="h5">Organise</h2>
-        <p class="rn-muted rn-mb-0">Reading statuses, custom shelves, favourites, and a catalogue of the physical books you own and lend.</p>
-    </div>
-    <div class="rn-card">
-        <div class="rn-feature-icon"><Icon Name="clock" /></div>
-        <h2 class="h5">Track</h2>
-        <p class="rn-muted rn-mb-0">Log reading sessions, follow your progress page by page, keep streaks and work toward yearly goals.</p>
-    </div>
-    <div class="rn-card">
-        <div class="rn-feature-icon"><Icon Name="pen" /></div>
-        <h2 class="h5">Remember</h2>
-        <p class="rn-muted rn-mb-0">A searchable journal of notes, quotes, takeaways and action items — private by default.</p>
-    </div>
-    <div class="rn-card">
-        <div class="rn-feature-icon"><Icon Name="chart" /></div>
-        <h2 class="h5">Understand</h2>
-        <p class="rn-muted rn-mb-0">Monthly activity, favourite genres and authors, and transparent recommendations based on what you enjoyed.</p>
-    </div>
-    <div class="rn-card">
-        <div class="rn-feature-icon"><Icon Name="users" /></div>
-        <h2 class="h5">Share, if you want</h2>
-        <p class="rn-muted rn-mb-0">Public profiles, shareable shelves, published reviews and reading challenges — all opt-in.</p>
+    <ol class="rn-steps">
+        <li>
+            <span class="rn-step-n">1</span>
+            <h3>Discover</h3>
+            <p>Search millions of editions by title, author or ISBN, and get suggestions with a plain reason attached to each one.</p>
+        </li>
+        <li>
+            <span class="rn-step-n sage">2</span>
+            <h3>Read</h3>
+            <p>Update your page in two taps. Log sessions if you like. Keep shelves, track loans to friends and set a goal that encourages without nagging.</p>
+        </li>
+        <li>
+            <span class="rn-step-n ink">3</span>
+            <h3>Remember</h3>
+            <p>Save quotes, takeaways and lessons with the page they came from. Your journal becomes a commonplace book you’ll actually reopen.</p>
+        </li>
+    </ol>
+</section>
+
+<section class="rn-band">
+    <div class="rn-wrap" style="display:flex; flex-wrap:wrap; align-items:center; gap:40px 64px; padding-top:clamp(48px, 7vw, 96px); padding-bottom:clamp(48px, 7vw, 96px)">
+        <div style="flex:1 1 320px; display:flex; flex-direction:column; gap:14px; max-width:460px">
+            <h2 style="margin:0; font-size:clamp(30px, 3.6vw, 44px)">Your reading, at a glance</h2>
+            <p style="margin:0; font-size:17px; line-height:1.6">Open ReadNest and the next useful thing is right there: the book you’re in the middle of, how far you’ve come, and what’s waiting after it.</p>
+            <a class="rn-btn rn-btn-secondary paper" style="align-self:flex-start" href="Account/Login">See the reading home<Icon Name="arrow-right" /></a>
+        </div>
+        <div aria-hidden="true" style="flex:1.4 1 420px; min-width:0; display:flex; flex-direction:column; gap:20px; padding:clamp(20px, 3vw, 32px); border-radius:var(--radius-lg); background:var(--color-bg); box-shadow:var(--shadow-lg)">
+            <span class="rn-heading" style="font-size:26px">Good evening</span>
+            <div style="display:flex; gap:20px; padding:20px; border-radius:var(--radius-lg); background:var(--color-surface)">
+                <div style="width:96px; flex:none"><BookCover Title="Piranesi" Author="Susanna Clarke" Isbn="9781635575637" Shadow="md" /></div>
+                <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:6px">
+                    <span class="rn-kicker" style="font-size:13px">Continue reading</span>
+                    <span class="rn-heading" style="font-size:24px; line-height:1.1">Piranesi</span>
+                    <span style="font-size:14px">Susanna Clarke</span>
+                    <span style="margin-top:auto; font-size:13px; font-weight:600">p. 164 of 272 · 60%</span>
+                    <span class="rn-progress" style="height:8px"><span style="width:60%"></span></span>
+                </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:10px">
+                <span class="rn-heading" style="font-size:17px">Up next</span>
+                <div style="display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:10px">
+                    @foreach (var cover in UpNext)
+                    {
+                        <BookCover Title="@cover.Title" Author="@cover.Author" Isbn="@cover.Isbn" Size="fill" />
+                    }
+                </div>
+            </div>
+        </div>
     </div>
 </section>
+
+@code {
+    private sealed record Art(string Title, string Author, string Isbn, string Style = "");
+
+    private static readonly Art[] HeroCovers =
+    [
+        new("Middlemarch", "George Eliot", "9780141439549", "left:12%; top:16%; width:28%; transform:rotate(-7deg); z-index:2"),
+        new("Piranesi", "Susanna Clarke", "9781635575637", "left:36%; top:6%; width:31%; z-index:4"),
+        new("Klara and the Sun", "Kazuo Ishiguro", "9780593318171", "left:60%; top:20%; width:27%; transform:rotate(6deg); z-index:3"),
+        new("Stoner", "John Williams", "9781590171998", "left:24%; top:44%; width:25%; transform:rotate(4deg); z-index:5"),
+        new("Gilead", "Marilynne Robinson", "9780312424404", "left:50%; top:50%; width:24%; transform:rotate(-4deg); z-index:6"),
+    ];
+
+    private static readonly Art[] UpNext =
+    [
+        new("Intermezzo", "Sally Rooney", "9780374602635"),
+        new("James", "Percival Everett", "9780385550369"),
+        new("Hamnet", "Maggie O'Farrell", "9780525657606"),
+        new("Orbital", "Samantha Harvey", "9780802161543"),
+        new("The Bee Sting", "Paul Murray", "9780374600303"),
+    ];
+}

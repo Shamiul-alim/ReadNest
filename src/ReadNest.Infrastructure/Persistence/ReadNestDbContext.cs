@@ -45,6 +45,8 @@ public sealed class ReadNestDbContext(DbContextOptions<ReadNestDbContext> option
 
     public DbSet<ChallengeParticipant> ChallengeParticipants => Set<ChallengeParticipant>();
 
+    public DbSet<RecommendationDismissal> RecommendationDismissals => Set<RecommendationDismissal>();
+
     public bool IsUniqueViolation(DbUpdateException exception) =>
         exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 

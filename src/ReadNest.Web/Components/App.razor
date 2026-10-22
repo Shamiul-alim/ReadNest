@@ -3,11 +3,18 @@
 
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="ReadNest - your personal book library, reading tracker and knowledge journal." />
-    <meta name="theme-color" content="#312e81" />
+    <meta name="theme-color" content="#f5ead8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1e1c18" media="(prefers-color-scheme: dark)" />
     <base href="/" />
+    @* Applies the saved theme before the stylesheet paints, so Lamplight never flashes paper. *@
+    <script>
+        (function () { try { var t = localStorage.getItem("rn-theme"); if (t === "light" || t === "dark") { document.documentElement.setAttribute("data-theme", t); } } catch (e) { } })();
+    </script>
     <ResourcePreloader />
+    <link rel="preload" href="fonts/caprasimo-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
     <link rel="stylesheet" href="@Assets["css/app.css"]" />
     <link rel="stylesheet" href="@Assets["ReadNest.Web.styles.css"]" />

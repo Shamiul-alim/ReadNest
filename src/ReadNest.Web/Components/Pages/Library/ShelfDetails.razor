@@ -3,6 +3,7 @@
 @rendermode AppRenderMode.Interactive
 @inherits ReadNestComponentBase
 @using ReadNest.Application.Library
+@using ReadNest.Web.Components.Book
 @inject ShelfService ShelfService
 @inject LibraryService Library
 @inject IJSRuntime JS
@@ -11,49 +12,108 @@
 
 @if (_error is not null)
 {
-    <PageHeader Title="Shelf" />
-    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+    <div class="rn-page tight">
+        <BackLink Href="shelves" Text="All shelves" />
+        <ErrorAlert Message="@_error" Title="We couldn’t open this shelf" OnRetry="RefreshAsync" />
+    </div>
 }
 else if (_shelf is null || _entries is null)
 {
-    <LoadingIndicator />
+    <LoadingIndicator Kind="grid" />
 }
 else
 {
-    <PageHeader Title="@_shelf.Name" Description="@_shelf.Description">
-        <Breadcrumbs><a href="shelves">Shelves</a> <Icon Name="chevron-right" /> <span>@_shelf.Name</span></Breadcrumbs>
-        <Actions>
-            @if (_shelf.IsPublic)
+    <div class="rn-page tight">
+        <BackLink Href="shelves" Text="All shelves" />
+        <div class="rn-page-header">
+            <div style="max-width:640px; gap:8px">
+                <h1 class="rn-mb-0" tabindex="-1">@_shelf.Name</h1>
+                @if (!string.IsNullOrWhiteSpace(_shelf.Description))
+                {
+                    <p style="color:var(--color-text)">@_shelf.Description</p>
+                }
+                <span class="rn-shelf-meta">
+                    <span>@Formats.Count(_shelf.BookCount, "book")</span>
+                    <span><Icon Name="@(_shelf.IsPublic ? "globe" : "lock")" Size="15" />@(_shelf.IsPublic ? "Public" : "Private")</span>
+                </span>
+            </div>
+            <div class="rn-page-actions">
+                <button type="button" class="rn-btn rn-btn-primary" @onclick="OpenAddBooksAsync"><Icon Name="plus" />Add books</button>
+                <button type="button" class="rn-btn rn-btn-secondary" @onclick="() => _editOpen = true"><Icon Name="pencil" />Edit</button>
+                @if (_shelf.IsPublic)
+                {
+                    <button type="button" class="rn-btn rn-btn-secondary" @onclick="CopyLinkAsync"><Icon Name="link" />Copy share link</button>
+                }
+                <button type="button" class="rn-btn rn-btn-ghost" disabled="@IsBusy" @onclick="DeleteAsync"><Icon Name="trash" />Delete</button>
+            </div>
+        </div>
+
+        @if (_entries.TotalCount == 0)
+        {
+            <div class="rn-empty dashed" style="max-width:640px">
+                <h2>This shelf is empty</h2>
+                <p>Pick books from your library to start it off. Removing a book from a shelf never removes it from your library.</p>
+                <div class="rn-actions"><button type="button" class="rn-btn rn-btn-primary" @onclick="OpenAddBooksAsync"><Icon Name="plus" />Add books</button></div>
+            </div>
+        }
+        else
+        {
+            <div class="rn-book-grid roomy" role="list">
+                @foreach (var entry in _entries.Items)
+                {
+                    <article class="rn-book-card" role="listitem" style="grid-row:span 4" @key="entry.Id">
+                        <a class="rn-cover-button" href="@("books/" + entry.BookId)" tabindex="-1" aria-hidden="true"><BookCover Title="@entry.Title" Author="@First(entry.Authors)" Url="@entry.CoverUrl" Isbn="@entry.Isbn13" /></a>
+                        <h3 class="rn-book-title" title="@entry.Title"><a href="@("books/" + entry.BookId)">@entry.Title</a></h3>
+                        <p class="rn-book-author">@(entry.Authors.Count > 0 ? string.Join(", ", entry.Authors) : "Unknown author")</p>
+                        <div style="padding:var(--space-2) 0 var(--space-8)">
+                            <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm" style="padding-left:0" aria-label="@("Remove " + entry.Title + " from this shelf")" @onclick="() => RemoveAsync(entry)"><Icon Name="x" />Remove</button>
+                        </div>
+                    </article>
+                }
+            </div>
+            <Pager Page="_entries.Page" TotalPages="_entries.TotalPages" TotalCount="_entries.TotalCount" ItemName="books" OnPageChanged="LoadPageAsync" />
+        }
+    </div>
+
+    <ShelfEditDialog @bind-Open="_editOpen" UserId="_userId" Shelf="_shelf" OnSaved="_ => RefreshAsync()" />
+
+    <Modal Title="@("Add books to " + _shelf.Name)" @bind-Open="_addOpen">
+        <ChildContent>
+            <div class="rn-input-icon" style="flex:none">
+                <Icon Name="search" />
+                <input data-autofocus class="rn-input" type="search" aria-label="Search your library" placeholder="Search your library" @bind="_addSearch" @bind:event="oninput" />
+            </div>
+            @if (_candidates is null)
             {
-                <button type="button" class="rn-btn rn-btn-secondary" @onclick="CopyLinkAsync"><Icon Name="link" /> Copy share link</button>
-                <a class="rn-btn rn-btn-ghost" href="@ShareUrl" target="_blank" rel="noopener">View public page</a>
+                <LoadingIndicator Kind="inline" />
+            }
+            else if (_candidates.Count == 0)
+            {
+                <p class="rn-subtle rn-mb-0">Every book in your library is already on this shelf.</p>
             }
             else
             {
-                <span class="rn-chip"><Icon Name="lock" /> Private shelf</span>
-            }
-        </Actions>
-    </PageHeader>
-
-    @if (_entries.TotalCount == 0)
-    {
-        <EmptyState Title="This shelf is empty" IconName="layers" Text="Open any book in your library and tick this shelf in the “Shelves” panel to add it here.">
-            <a class="rn-btn rn-btn-primary" href="library">Go to my library</a>
-        </EmptyState>
-    }
-    else
-    {
-        <div class="rn-book-grid">
-            @foreach (var entry in _entries.Items)
-            {
-                <div @key="entry.Id">
-                    <LibraryBookCard Entry="entry" />
-                    <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm mt-1" @onclick="() => RemoveAsync(entry)">Remove from shelf</button>
+                <div class="rn-list" style="max-height:46vh; overflow-y:auto">
+                    @foreach (var entry in FilteredCandidates)
+                    {
+                        <label class="rn-list-item" style="cursor:pointer; padding:10px 4px" @key="entry.Id">
+                            <input type="checkbox" checked="@_picked.Contains(entry.Id)" @onchange="e => Pick(entry.Id, e)" />
+                            <BookCover Title="@entry.Title" Url="@entry.CoverUrl" Isbn="@entry.Isbn13" Size="xs" />
+                            <span class="rn-list-body">
+                                <span style="font-size:15px; font-weight:700">@entry.Title</span>
+                                <span class="rn-small rn-muted">@(entry.Authors.Count > 0 ? string.Join(", ", entry.Authors) : "Unknown author")</span>
+                            </span>
+                        </label>
+                    }
                 </div>
             }
-        </div>
-        <Pager Page="_entries.Page" TotalPages="_entries.TotalPages" TotalCount="_entries.TotalCount" ItemName="books" OnPageChanged="LoadPageAsync" />
-    }
+        </ChildContent>
+        <Footer>
+            <button type="button" class="rn-btn rn-btn-secondary" @onclick="() => _addOpen = false">Cancel</button>
+            <button type="button" class="rn-btn rn-btn-primary" disabled="@(_picked.Count == 0 || IsBusy)" @onclick="AddPickedAsync">@(_picked.Count == 0 ? "Add books" : "Add " + Formats.Count(_picked.Count, "book"))</button>
+        </Footer>
+    </Modal>
+    <ConfirmDialog @ref="_confirm" />
 }
 
 @code {
@@ -62,10 +122,21 @@ else
     private Guid _userId;
     private ShelfDto? _shelf;
     private PagedResult<LibraryEntryDto>? _entries;
+    private List<LibraryEntryDto>? _candidates;
+    private readonly HashSet<Guid> _picked = [];
+    private string _addSearch = "";
     private string? _error;
     private int _page = 1;
+    private bool _editOpen;
+    private bool _addOpen;
+    private ConfirmDialog _confirm = default!;
 
     private string ShareUrl => Navigation.ToAbsoluteUri("s/" + _shelf?.ShareSlug).ToString();
+
+    private IEnumerable<LibraryEntryDto> FilteredCandidates => string.IsNullOrWhiteSpace(_addSearch)
+        ? _candidates!
+        : _candidates!.Where(e => e.Title.Contains(_addSearch.Trim(), StringComparison.OrdinalIgnoreCase)
+                                  || e.Authors.Any(a => a.Contains(_addSearch.Trim(), StringComparison.OrdinalIgnoreCase)));
 
     protected override async Task OnParametersSetAsync()
     {
@@ -88,11 +159,81 @@ else
         await RefreshAsync();
     }
 
+    private async Task OpenAddBooksAsync()
+    {
+        _picked.Clear();
+        _addSearch = "";
+        _candidates = null;
+        _addOpen = true;
+        var error = await LoadAsync(async () =>
+        {
+            var onShelf = (await Library.ListAsync(_userId, new LibraryQuery { ShelfId = ShelfId, PageSize = 100 }, ComponentToken)).Items.Select(e => e.Id).ToHashSet();
+            var all = await Library.ListAsync(_userId, new LibraryQuery { Sort = LibrarySort.Title, Descending = false, PageSize = 100 }, ComponentToken);
+            _candidates = all.Items.Where(e => !onShelf.Contains(e.Id)).ToList();
+        });
+        if (error is not null)
+        {
+            _addOpen = false;
+            Toasts.Error(error);
+        }
+    }
+
+    private void Pick(Guid id, ChangeEventArgs e)
+    {
+        if (e.Value is true)
+        {
+            _picked.Add(id);
+        }
+        else
+        {
+            _picked.Remove(id);
+        }
+    }
+
+    private async Task AddPickedAsync()
+    {
+        var ids = _picked.ToList();
+        if (await RunAsync(async () =>
+            {
+                foreach (var id in ids)
+                {
+                    await ShelfService.AddEntryAsync(_userId, ShelfId, id, ComponentToken);
+                }
+            }, "Added " + Formats.Count(ids.Count, "book") + " to " + _shelf!.Name + "."))
+        {
+            _addOpen = false;
+            await RefreshAsync();
+        }
+    }
+
     private async Task RemoveAsync(LibraryEntryDto entry)
     {
-        if (await RunAsync(() => ShelfService.RemoveEntryAsync(_userId, ShelfId, entry.Id, ComponentToken), $"Removed “{entry.Title}” from this shelf."))
+        var userId = _userId;
+        var shelfId = ShelfId;
+        if (await RunAsync(
+                () => ShelfService.RemoveEntryAsync(userId, shelfId, entry.Id, ComponentToken),
+                "Removed " + entry.Title + " from this shelf.",
+                undo: async () =>
+                {
+                    await ShelfService.AddEntryAsync(userId, shelfId, entry.Id, CancellationToken.None);
+                    await RefreshAsync();
+                }))
         {
             await RefreshAsync();
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_shelf is null)
+        {
+            return;
+        }
+
+        if (await _confirm.ConfirmAsync("Delete " + _shelf.Name + "?", "The shelf is deleted. Its books stay in your library.", "Delete shelf")
+            && await RunAsync(() => ShelfService.DeleteAsync(_userId, ShelfId, ComponentToken), "Shelf deleted. Its books are still in your library."))
+        {
+            Navigation.NavigateTo("shelves");
         }
     }
 
@@ -108,4 +249,6 @@ else
             Toasts.Info("Copy this link: " + ShareUrl);
         }
     }
+
+    private static string? First(IReadOnlyList<string> authors) => authors.Count > 0 ? authors[0] : null;
 }

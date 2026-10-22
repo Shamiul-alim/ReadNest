@@ -192,6 +192,26 @@ public sealed class UserFollow
     }
 }
 
+/// <summary>
+/// A recommendation the reader marked "Not for me". The book is left out of their suggestions until they restore
+/// their dismissed suggestions.
+/// </summary>
+public sealed class RecommendationDismissal
+{
+    private RecommendationDismissal()
+    {
+    }
+
+    public Guid UserId { get; private set; }
+
+    public Guid BookId { get; private set; }
+
+    public DateTime DismissedAtUtc { get; private set; }
+
+    public static RecommendationDismissal Create(Guid userId, Guid bookId, DateTime nowUtc) =>
+        new() { UserId = userId, BookId = bookId, DismissedAtUtc = nowUtc };
+}
+
 /// <summary>A reading challenge: read <see cref="TargetBooks"/> books between two dates.</summary>
 public sealed class ReadingChallenge : Entity
 {

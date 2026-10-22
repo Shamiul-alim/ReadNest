@@ -1,6 +1,7 @@
-<div class="rn-card rn-stat">
-    <span class="rn-stat-label"><Icon Name="@IconName" /> @Label</span>
+@* An inline stat: value over label, no card. *@
+<div class="rn-stat">
     <span class="rn-stat-value">@Value</span>
+    <span class="rn-stat-label">@Label</span>
     @if (!string.IsNullOrEmpty(Hint))
     {
         <span class="rn-stat-hint">@Hint</span>

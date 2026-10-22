@@ -1,8 +1,59 @@
-<div class="rn-loading" role="status" aria-live="polite">
-    <span class="rn-spinner" aria-hidden="true"></span>
-    <span>@Text</span>
+@* Static skeletons that mirror the layout (no shimmer), marked aria-busy. *@
+<div class="rn-loading" aria-busy="true" aria-live="polite">
+    <span class="visually-hidden">@Text</span>
+    @switch (Kind)
+    {
+        case "rows":
+            @for (var i = 0; i < 4; i++)
+            {
+                <div style="display:flex; gap:20px; padding:18px 0; border-bottom:1px solid var(--color-divider)">
+                    <span class="rn-skel cover" style="width:80px; flex:none"></span>
+                    <div style="flex:1; display:flex; flex-direction:column; gap:10px; padding-top:6px">
+                        <span class="rn-skel" style="width:45%; height:20px"></span>
+                        <span class="rn-skel soft" style="width:25%; height:14px"></span>
+                        <span class="rn-skel soft" style="width:80%; height:14px"></span>
+                    </div>
+                </div>
+            }
+            break;
+        case "grid":
+            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:20px">
+                @for (var i = 0; i < 6; i++)
+                {
+                    <span class="rn-skel cover"></span>
+                }
+            </div>
+            break;
+        case "inline":
+            <span class="rn-skel soft" style="width:min(320px, 70%); height:16px"></span>
+            <span class="rn-skel soft" style="width:min(220px, 50%); height:16px"></span>
+            break;
+        default:
+            <div style="display:flex; flex-direction:column; gap:12px">
+                <span class="rn-skel" style="width:min(380px, 80%); height:40px"></span>
+                <span class="rn-skel soft" style="width:min(260px, 60%); height:18px"></span>
+            </div>
+            <div class="rn-skel box" style="display:flex; gap:24px; padding:28px">
+                <span class="rn-skel" style="width:130px; aspect-ratio:2/3; border-radius:var(--radius-sm); flex:none"></span>
+                <div style="flex:1; display:flex; flex-direction:column; gap:14px; padding-top:8px">
+                    <span class="rn-skel" style="width:60%; height:28px"></span>
+                    <span class="rn-skel" style="width:35%; height:16px"></span>
+                    <span class="rn-skel" style="margin-top:auto; height:12px"></span>
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:20px">
+                @for (var i = 0; i < 5; i++)
+                {
+                    <span class="rn-skel cover"></span>
+                }
+            </div>
+            break;
+    }
 </div>
 
 @code {
     [Parameter] public string Text { get; set; } = "Loading…";
+
+    /// <summary>"page" (default), "rows", "grid" or "inline".</summary>
+    [Parameter] public string Kind { get; set; } = "page";
 }

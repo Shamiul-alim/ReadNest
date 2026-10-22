@@ -1,0 +1,188 @@
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Notes
+@inject NoteService Notes
+
+@* Create or edit a note. When no entry is fixed (the journal), the reader picks the book first. *@
+<Modal Title="@(Note is null ? (InitialType == NoteType.Quote ? "Save a quote" : "New note") : "Edit note")" Open="Open" OpenChanged="OnOpenChanged" Wide="true">
+    <ChildContent>
+        <form id="@_formId" @onsubmit="SaveAsync" @onsubmit:preventDefault novalidate style="display:flex; flex-direction:column; gap:16px">
+            <div role="radiogroup" aria-label="Note type" class="rn-chips">
+                @foreach (var type in Enum.GetValues<NoteType>())
+                {
+                    var t = type;
+                    <button type="button" role="radio" class="rn-filter bold" aria-checked="@(_type == t ? "true" : "false")" @onclick="() => _type = t">
+                        <Icon Name="@NoteTypeBadge.IconFor(t)" />@t.ToDisplayName()
+                    </button>
+                }
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px">
+                @if (EntryId is null && Note is null)
+                {
+                    <div class="rn-field" style="grid-column:1 / -1">
+                        <label class="rn-label" for="@(_formId + "-book")">Book</label>
+                        <select id="@(_formId + "-book")" class="rn-select @(_attempted && _entry is null ? "invalid" : null)" @bind="_entry">
+                            <option value="">Choose a book…</option>
+                            @foreach (var book in Books)
+                            {
+                                <option value="@book.Id">@book.Title</option>
+                            }
+                        </select>
+                    </div>
+                }
+                <div class="rn-field">
+                    <label class="rn-label" for="@(_formId + "-page")">Page <span class="optional">(optional)</span></label>
+                    <input id="@(_formId + "-page")" class="rn-input @(PageError is null ? null : "invalid")" type="number" inputmode="numeric" min="0" placeholder="e.g. 88"
+                           value="@_page" @oninput="OnPageInput" />
+                </div>
+                <div class="rn-field">
+                    <label class="rn-label" for="@(_formId + "-chapter")">Chapter or part <span class="optional">(optional)</span></label>
+                    <input id="@(_formId + "-chapter")" class="rn-input" maxlength="200" placeholder="e.g. Ch. 4" @bind="_chapter" @bind:event="oninput" />
+                </div>
+            </div>
+            <div class="rn-field">
+                <label class="rn-label" for="@(_formId + "-text")">@(_type == NoteType.Quote ? "Quote" : "Note")</label>
+                <textarea id="@(_formId + "-text")" data-autofocus class="rn-textarea @(_attempted && string.IsNullOrWhiteSpace(_content) ? "invalid" : null)" maxlength="5000"
+                          style="min-height:180px; font-size:17px; line-height:1.65" placeholder="@Placeholder" aria-invalid="@(_attempted && string.IsNullOrWhiteSpace(_content) ? "true" : "false")"
+                          @bind="_content" @bind:event="oninput"></textarea>
+                <span class="rn-hint">@((_content?.Length ?? 0).ToString("N0")) / 5,000</span>
+            </div>
+            @if (_attempted && Error is { } error)
+            {
+                <span class="rn-error-text" role="alert"><Icon Name="alert" />@error</span>
+            }
+        </form>
+    </ChildContent>
+    <Footer>
+        @if (Note is not null)
+        {
+            <button type="button" class="rn-btn rn-btn-ghost push" disabled="@IsBusy" @onclick="DeleteAsync"><Icon Name="trash" />Delete</button>
+        }
+        <button type="button" class="rn-btn rn-btn-secondary" @onclick="CloseAsync">Cancel</button>
+        <button type="submit" form="@_formId" class="rn-btn rn-btn-primary" disabled="@IsBusy">Save note</button>
+    </Footer>
+</Modal>
+
+<ConfirmDialog @ref="_confirm" />
+
+@code {
+    private readonly string _formId = "note-" + Guid.NewGuid().ToString("N")[..8];
+    private NoteType _type = NoteType.General;
+    private string? _content;
+    private int? _page;
+    private string? _pageText;
+    private string? _chapter;
+    private Guid? _entry;
+    private bool _attempted;
+    private bool _wasOpen;
+    private ConfirmDialog _confirm = default!;
+
+    public sealed record BookOption(Guid Id, string Title);
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter, EditorRequired] public Guid UserId { get; set; }
+
+    /// <summary>The library entry the note belongs to; null lets the reader choose from <see cref="Books"/>.</summary>
+    [Parameter] public Guid? EntryId { get; set; }
+    [Parameter] public IReadOnlyList<BookOption> Books { get; set; } = [];
+
+    /// <summary>The note being edited, or null for a new one.</summary>
+    [Parameter] public NoteDto? Note { get; set; }
+    [Parameter] public NoteType InitialType { get; set; } = NoteType.General;
+    [Parameter] public int? SuggestedPage { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private string Placeholder => _type switch
+    {
+        NoteType.Quote => "Copy the line exactly as it appears.",
+        NoteType.Takeaway => "The idea you want to keep.",
+        NoteType.Lesson => "What will you do differently?",
+        NoteType.ActionItem => "Something you mean to try.",
+        _ => "What do you want to remember?",
+    };
+
+    private string? PageError => _page is < 0 ? "Pages start at 0." : _pageText is { Length: > 0 } && _page is null ? "Enter the page as a number." : null;
+
+    private string? Error =>
+        EntryId is null && Note is null && _entry is null ? "Choose the book this note is from." :
+        string.IsNullOrWhiteSpace(_content) ? "Write something before saving." :
+        PageError;
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen)
+        {
+            _wasOpen = true;
+            _attempted = false;
+            _type = Note?.Type ?? InitialType;
+            _content = Note?.Content;
+            _page = Note is null ? SuggestedPage : Note.PageNumber;
+            _pageText = _page?.ToString(CultureInfo.InvariantCulture);
+            _chapter = Note?.Chapter;
+            _entry = EntryId;
+        }
+        else if (!Open)
+        {
+            _wasOpen = false;
+        }
+    }
+
+    private void OnPageInput(ChangeEventArgs e)
+    {
+        _pageText = e.Value?.ToString();
+        _page = int.TryParse(_pageText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var page) ? page : null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _attempted = true;
+        if (Error is not null)
+        {
+            return;
+        }
+
+        var request = new NoteRequest(_type, _content!.Trim(), _page, string.IsNullOrWhiteSpace(_chapter) ? null : _chapter.Trim());
+        var editing = Note;
+        var entryId = editing?.EntryId ?? _entry ?? EntryId;
+        var ok = await RunAsync(async () =>
+        {
+            if (editing is not null)
+            {
+                await Notes.UpdateAsync(UserId, editing.Id, request, ComponentToken);
+            }
+            else
+            {
+                await Notes.CreateAsync(UserId, entryId!.Value, request, ComponentToken);
+            }
+        }, editing is null ? (_type == NoteType.Quote ? "Quote saved to your journal." : "Note saved to your journal.") : "Note updated.");
+        if (ok)
+        {
+            await CloseAsync();
+            await OnSaved.InvokeAsync();
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Note is not { } note)
+        {
+            return;
+        }
+
+        if (await _confirm.ConfirmAsync("Delete this note?", "It will be removed from your journal. This can’t be undone.", "Delete note")
+            && await RunAsync(() => Notes.DeleteAsync(UserId, note.Id, ComponentToken), "Note deleted."))
+        {
+            await CloseAsync();
+            await OnSaved.InvokeAsync();
+        }
+    }
+
+    private async Task OnOpenChanged(bool open)
+    {
+        Open = open;
+        _wasOpen = open;
+        await OpenChanged.InvokeAsync(open);
+    }
+
+    private Task CloseAsync() => OnOpenChanged(false);
+}

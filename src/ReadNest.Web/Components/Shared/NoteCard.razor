@@ -1,26 +1,41 @@
 @using ReadNest.Application.Notes
-<article class="rn-note @(Note.Type == NoteType.Quote ? "quote" : null)">
+@* Note card: page-white paper, type label, page reference, text (quotes in Caprasimo), date and Edit. *@
+<article class="rn-note">
     <div class="rn-note-head">
-        <span class="rn-chip">@(Note.Type == NoteType.Quote ? "❝ " : "")@Note.Type.ToDisplayName()</span>
-        @if (ShowBook)
+        <NoteTypeBadge Type="Note.Type" />
+        @if (Reference(Note) is { } reference)
         {
-            <a href="@("books/" + Note.BookId)"><strong>@Note.BookTitle</strong></a>
+            <span>@reference</span>
         }
-        @if (Note.PageNumber is { } pageNumber)
-        {
-            <span>p. @pageNumber</span>
-        }
-        @if (!string.IsNullOrEmpty(Note.Chapter))
-        {
-            <span>· @Note.Chapter</span>
-        }
-        <span title="@("Last edited " + Note.UpdatedAtUtc.ToString("u"))">· @Note.UpdatedAtUtc.ToString("d MMM yyyy")</span>
-        <span class="rn-note-actions">
-            <button type="button" class="rn-btn rn-btn-ghost rn-btn-icon" aria-label="Edit note" @onclick="OnEdit"><Icon Name="pen" /></button>
-            <button type="button" class="rn-btn rn-btn-danger-ghost rn-btn-icon" aria-label="Delete note" @onclick="OnDelete"><Icon Name="trash" /></button>
+    </div>
+    @if (Note.Type == NoteType.Quote)
+    {
+        <blockquote class="rn-note-content">“@Note.Content”</blockquote>
+    }
+    else
+    {
+        <p class="rn-note-content">@Note.Content</p>
+    }
+    <div class="rn-note-foot">
+        <span>
+            @if (ShowBook)
+            {
+                <a href="@("books/" + Note.BookId)">@Note.BookTitle</a>
+                <span> · </span>
+            }
+            <span title="@("Last edited " + Note.UpdatedAtUtc.ToString("u", CultureInfo.InvariantCulture))">@Note.CreatedAtUtc.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)</span>
+        </span>
+        <span class="tools">
+            @if (OnEdit.HasDelegate)
+            {
+                <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm" @onclick="OnEdit"><Icon Name="pencil" />Edit</button>
+            }
+            @if (OnDelete.HasDelegate)
+            {
+                <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm" aria-label="Delete note" @onclick="OnDelete"><Icon Name="trash" /></button>
+            }
         </span>
     </div>
-    <div class="rn-note-content">@Note.Content</div>
 </article>
 
 @code {
@@ -28,4 +43,18 @@
     [Parameter] public bool ShowBook { get; set; } = true;
     [Parameter] public EventCallback OnEdit { get; set; }
     [Parameter] public EventCallback OnDelete { get; set; }
+
+    /// <summary>"Ch. 20, p. 194", "p. 88", "Part Six" or null.</summary>
+    public static string? Reference(NoteDto note)
+    {
+        var page = note.PageNumber is { } p ? "p. " + p.ToString("N0", CultureInfo.CurrentCulture) : null;
+        var chapter = string.IsNullOrWhiteSpace(note.Chapter) ? null : note.Chapter;
+        return (chapter, page) switch
+        {
+            (null, null) => null,
+            (null, _) => page,
+            (_, null) => chapter,
+            _ => chapter + ", " + page,
+        };
+    }
 }

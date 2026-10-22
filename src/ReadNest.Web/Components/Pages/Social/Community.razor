@@ -5,142 +5,268 @@
 @using ReadNest.Application.Social
 @inject SocialService Social
 @inject ReviewService Reviews
+@inject ChallengeService Challenges
 
-<AppTitle Text="Readers & reviews" />
+<AppTitle Text="Community" />
 
-<PageHeader Title="Readers &amp; reviews" Description="Find readers with public profiles and see what the community is reviewing." />
+<div class="rn-page" style="gap:48px">
+    <div style="display:flex; flex-direction:column; gap:8px; max-width:720px">
+        <h1 class="rn-mb-0" tabindex="-1">Community</h1>
+        <p class="rn-lede" style="font-size:16px">A small, quiet corner: the readers you follow, the lists they keep and the challenges you’ve joined. No feed, no counts, nothing to keep up with.</p>
+    </div>
 
-<div class="rn-split">
-    <div>
-        <section>
-            <div class="rn-section-header"><h2>Recent public reviews</h2></div>
-            @if (_reviewsError is not null)
+    @if (_userId is null)
+    {
+        <div class="rn-card dashed" style="max-width:640px">
+            <strong class="rn-heading" style="font-size:20px">Follow readers you trust</strong>
+            <span class="rn-subtle" style="font-size:15px">Create an account to follow readers, publish reviews and join challenges. Your library stays private unless you choose otherwise.</span>
+            <div class="rn-actions"><a class="rn-btn rn-btn-primary" href="Account/Register">Start your library</a><a class="rn-btn rn-btn-ghost" href="Account/Login">Sign in</a></div>
+        </div>
+    }
+    else
+    {
+        <section aria-labelledby="rd-h" class="rn-section">
+            <h2 id="rd-h" class="rn-mb-0">Readers you follow</h2>
+            @if (_following is null)
             {
-                <ErrorAlert Message="@_reviewsError" OnRetry="LoadReviewsAsync" />
+                <LoadingIndicator Kind="inline" />
             }
-            else if (_reviews is null)
+            else if (_following.Count == 0)
             {
-                <LoadingIndicator />
-            }
-            else if (_reviews.TotalCount == 0)
-            {
-                <EmptyState Title="No public reviews yet" IconName="star" Text="When readers publish a review, it appears here and on the book's page." />
+                <p class="rn-subtle rn-mb-0">You’re not following anyone yet. Find readers below, or follow someone from their profile.</p>
             }
             else
             {
-                <div class="rn-stack">
-                    @foreach (var review in _reviews.Items)
+                <div class="rn-grid" style="grid-template-columns:repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap:16px">
+                    @foreach (var person in _following)
                     {
-                        <article class="rn-card tight">
-                            <div class="rn-flex" style="align-items:flex-start">
-                                <a href="@("books/" + review.BookId)" tabindex="-1" aria-hidden="true"><BookCover Title="@review.BookTitle" Url="@review.CoverUrl" Size="sm" /></a>
-                                <div style="min-width:0;flex:1">
-                                    <a class="rn-list-title" href="@("books/" + review.BookId)">@review.BookTitle</a>
-                                    <div class="rn-flex rn-flex-wrap rn-subtle">
-                                        <span>by
-                                            @if (review.ReviewerHandle is not null)
-                                            {
-                                                <a href="@("u/" + review.ReviewerHandle)">@review.ReviewerName</a>
-                                            }
-                                            else
-                                            {
-                                                @review.ReviewerName
-                                            }
-                                        </span>
-                                        <Stars Value="review.Rating" />
-                                        <span>@review.UpdatedAtUtc.ToString("d MMM yyyy")</span>
-                                    </div>
-                                    <div class="pre-wrap mt-2">@(review.Review.Length > 600 ? review.Review[..600] + "…" : review.Review)</div>
-                                </div>
-                            </div>
-                        </article>
+                        @PersonCard(person)
                     }
                 </div>
-                <Pager Page="_reviews.Page" TotalPages="_reviews.TotalPages" TotalCount="_reviews.TotalCount" ItemName="reviews" OnPageChanged="ReviewsPageAsync" />
             }
         </section>
-    </div>
+    }
 
-    <div>
-        <section class="rn-card">
-            <h2 class="rn-card-title"><Icon Name="search" /> Find readers</h2>
-            <form class="rn-flex" role="search" @onsubmit="SearchPeopleAsync">
-                <label class="visually-hidden" for="people-search">Name or handle</label>
-                <input id="people-search" class="rn-input" type="search" maxlength="200" placeholder="Name or handle" @bind="_peopleSearch" />
-                <button type="submit" class="rn-btn rn-btn-secondary">Search</button>
-            </form>
-            @if (_people is not null)
-            {
-                <PeopleList People="_people" Empty="No public profiles match." />
-            }
-        </section>
-
-        @if (_userId is not null)
+    <section aria-labelledby="ch-h" class="rn-section">
+        <div class="rn-section-header">
+            <h2 id="ch-h">Reading challenges</h2>
+            <a class="rn-btn rn-btn-ghost" href="challenges">All challenges<Icon Name="arrow-right" /></a>
+        </div>
+        @if (_challenges is null)
         {
-            <section class="rn-card">
-                <h2 class="rn-card-title"><Icon Name="users" /> Following</h2>
-                @if (_following is null)
-                {
-                    <LoadingIndicator />
-                }
-                else
-                {
-                    <PeopleList People="_following" Empty="You're not following anyone yet." />
-                }
-            </section>
-            <section class="rn-card">
-                <h2 class="rn-card-title"><Icon Name="users" /> Followers</h2>
-                @if (_followers is null)
-                {
-                    <LoadingIndicator />
-                }
-                else
-                {
-                    <PeopleList People="_followers" Empty="No followers yet. Make your profile public in Settings so others can find you." />
-                }
-            </section>
+            <LoadingIndicator Kind="inline" />
+        }
+        else if (_challenges.Count == 0)
+        {
+            <p class="rn-subtle rn-mb-0">No open challenges right now. <a href="challenges">Start one</a>.</p>
         }
         else
         {
-            <section class="rn-card">
-                <p class="rn-muted">Create an account to follow readers, publish reviews and join challenges.</p>
-                <a class="rn-btn rn-btn-primary" href="Account/Register">Sign up free</a>
-            </section>
+            <div class="rn-grid" style="grid-template-columns:repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap:16px">
+                @foreach (var challenge in _challenges)
+                {
+                    <ChallengeCard Challenge="challenge" Today="_today" MyBooks="@(_myProgress.TryGetValue(challenge.Id, out var mine) ? mine : null)"
+                                   OnJoin="@(_userId is null ? null : () => JoinAsync(challenge))" Busy="IsBusy" />
+                }
+            </div>
         }
-    </div>
+    </section>
+
+    @if (_lists.Count > 0)
+    {
+        <section aria-labelledby="ls-h" class="rn-section">
+            <h2 id="ls-h" class="rn-mb-0">Lists from readers you follow</h2>
+            <div class="rn-grid" style="grid-template-columns:repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap:16px">
+                @foreach (var (owner, shelf) in _lists)
+                {
+                    <a class="rn-shelf-card" style="background:var(--color-neutral-100); padding:20px; gap:12px" href="@("s/" + shelf.ShareSlug)">
+                        <CoverFan Books="shelf.Previews ?? []" Small="true" />
+                        <span class="rn-shelf-name" style="font-size:19px">@shelf.Name</span>
+                        <span class="rn-subtle">@owner · @Formats.Count(shelf.BookCount, "book")</span>
+                    </a>
+                }
+            </div>
+        </section>
+    }
+
+    <section aria-labelledby="cr-h" class="rn-section" style="max-width:820px; gap:8px">
+        <h2 id="cr-h" style="margin:0 0 8px">Recent reviews</h2>
+        @if (_reviewsError is not null)
+        {
+            <ErrorAlert Message="@_reviewsError" Compact="true" OnRetry="LoadReviewsAsync" />
+        }
+        else if (_reviews is null)
+        {
+            <LoadingIndicator Kind="rows" />
+        }
+        else if (_reviews.TotalCount == 0)
+        {
+            <p class="rn-subtle rn-mb-0">No public reviews yet. When readers publish one, it appears here and on the book’s page.</p>
+        }
+        else
+        {
+            @foreach (var review in _reviews.Items)
+            {
+                <article class="rn-review" style="padding:20px 0">
+                    <a class="rn-cover-button" style="width:60px" href="@("books/" + review.BookId)" tabindex="-1" aria-hidden="true"><BookCover Title="@review.BookTitle" Url="@review.CoverUrl" /></a>
+                    <div>
+                        <div class="rn-review-meta">
+                            <Avatar Name="@review.ReviewerName" />
+                            @if (review.ReviewerHandle is not null)
+                            {
+                                <a href="@("u/" + review.ReviewerHandle)" style="font-size:15px; font-weight:700; color:var(--color-text)">@review.ReviewerName</a>
+                            }
+                            else
+                            {
+                                <strong style="font-size:15px; color:var(--color-text)">@review.ReviewerName</strong>
+                            }
+                            <span>on <a href="@("books/" + review.BookId)" style="font-weight:700; color:var(--color-text)">@review.BookTitle</a> · @Formats.Long(review.UpdatedAtUtc)</span>
+                        </div>
+                        <Stars Value="review.Rating" IconSize="15" />
+                        <p>@(review.Review.Length > 600 ? review.Review[..600] + "…" : review.Review)</p>
+                    </div>
+                </article>
+            }
+            <Pager Page="_reviews.Page" TotalPages="_reviews.TotalPages" TotalCount="_reviews.TotalCount" ItemName="reviews" OnPageChanged="ReviewsPageAsync" />
+        }
+    </section>
+
+    <section aria-labelledby="find-h" class="rn-section">
+        <h2 id="find-h" class="rn-mb-0">Find readers</h2>
+        <form class="rn-toolbar" role="search" @onsubmit="SearchPeopleAsync" @onsubmit:preventDefault>
+            <div class="rn-input-icon" style="flex:1 1 260px; max-width:420px">
+                <Icon Name="search" />
+                <input class="rn-input" type="search" maxlength="200" aria-label="Search readers by name or handle" placeholder="Name or handle" style="min-height:44px; font-size:15px" @bind="_peopleSearch" />
+            </div>
+            <button type="submit" class="rn-btn rn-btn-secondary">Search</button>
+        </form>
+        @if (_people is { Count: 0 })
+        {
+            <p class="rn-subtle rn-mb-0">No public profiles match.</p>
+        }
+        else if (_people is not null)
+        {
+            <div class="rn-grid" style="grid-template-columns:repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap:16px">
+                @foreach (var person in _people.Take(12))
+                {
+                    @PersonCard(person)
+                }
+            </div>
+        }
+        @if (_followers is { Count: > 0 })
+        {
+            <p class="rn-subtle rn-mb-0">@Formats.Count(_followers.Count, "reader") @(_followers.Count == 1 ? "follows" : "follow") you.</p>
+        }
+    </section>
 </div>
 
 @code {
     private Guid? _userId;
+    private DateOnly _today = DateOnly.FromDateTime(DateTime.UtcNow);
     private PagedResult<PublicReviewDto>? _reviews;
     private IReadOnlyList<PersonDto>? _people;
     private IReadOnlyList<PersonDto>? _following;
     private IReadOnlyList<PersonDto>? _followers;
+    private IReadOnlyList<ChallengeSummaryDto>? _challenges;
+    private readonly Dictionary<Guid, int?> _myProgress = [];
+    private readonly List<(string Owner, PublicShelfLinkDto Shelf)> _lists = [];
+    private HashSet<string> _followingHandles = [];
     private string? _reviewsError;
     private string _peopleSearch = "";
     private int _reviewsPage = 1;
 
+    private RenderFragment PersonCard(PersonDto person) => __builder =>
+    {
+        <div class="rn-person" @key="person.Handle">
+            <div class="rn-person-head">
+                <Avatar Name="@person.DisplayName" ImageUrl="@person.ProfileImageUrl" Size="md" />
+                <div>
+                    @if (person.IsPublic)
+                    {
+                        <a href="@("u/" + person.Handle)">@person.DisplayName</a>
+                    }
+                    else
+                    {
+                        <strong>@person.DisplayName</strong>
+                    }
+                    <span>@@@person.Handle@(person.IsPublic ? "" : " · private")</span>
+                </div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(person.Bio))
+            {
+                <span style="font-size:14px; line-height:1.5; overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical">@person.Bio</span>
+            }
+            @if (_userId is not null)
+            {
+                @if (_followingHandles.Contains(person.Handle))
+                {
+                    <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" style="align-self:flex-start" aria-pressed="true" disabled="@IsBusy" @onclick="() => UnfollowAsync(person)"><Icon Name="check" />Following</button>
+                }
+                else
+                {
+                    <button type="button" class="rn-btn rn-btn-primary rn-btn-sm" style="align-self:flex-start" aria-pressed="false" disabled="@IsBusy" @onclick="() => FollowAsync(person)"><Icon Name="plus" />Follow</button>
+                }
+            }
+        </div>
+    };
+
     protected override async Task OnInitializedAsync()
     {
         _userId = await GetUserIdAsync();
+        await LoadSocialAsync();
+        await LoadChallengesAsync();
         await LoadReviewsAsync();
         await SearchPeopleAsync();
-        if (_userId is { } userId)
+    }
+
+    private async Task LoadSocialAsync()
+    {
+        if (_userId is not { } userId)
         {
-            var error = await LoadAsync(async () =>
+            return;
+        }
+
+        var error = await LoadAsync(async () =>
+        {
+            _following = await Social.GetFollowingAsync(userId, ComponentToken);
+            _followers = await Social.GetFollowersAsync(userId, ComponentToken);
+            _followingHandles = _following.Select(p => p.Handle).ToHashSet();
+            _lists.Clear();
+            foreach (var person in _following.Where(p => p.IsPublic).Take(6))
             {
-                _following = await Social.GetFollowingAsync(userId, ComponentToken);
-                _followers = await Social.GetFollowersAsync(userId, ComponentToken);
-            });
-            if (error is not null)
-            {
-                Toasts.Error(error);
+                var profile = await Social.GetPublicProfileAsync(person.Handle, userId, ComponentToken);
+                _lists.AddRange(profile.PublicShelves.Where(s => s.BookCount > 0).Take(2).Select(s => (profile.DisplayName, s)));
             }
+        });
+        if (error is not null)
+        {
+            Toasts.Error(error);
+        }
+    }
+
+    private async Task LoadChallengesAsync()
+    {
+        var error = await LoadAsync(async () =>
+        {
+            var all = await Challenges.ListAsync(_userId, mineOnly: false, ComponentToken);
+            _challenges = all.Where(c => c.EndsOn >= _today).OrderByDescending(c => c.IsParticipant).ThenBy(c => c.EndsOn).Take(6).ToList();
+            _myProgress.Clear();
+            foreach (var challenge in _challenges.Where(c => c.IsParticipant))
+            {
+                var details = await Challenges.GetAsync(challenge.Id, _userId, ComponentToken);
+                _today = details.Today;
+                _myProgress[challenge.Id] = details.MyBooksCompleted;
+            }
+        });
+        if (error is not null)
+        {
+            _challenges = [];
+            Toasts.Error(error);
         }
     }
 
     private async Task LoadReviewsAsync() =>
-        _reviewsError = await LoadAsync(async () => _reviews = await Reviews.GetRecentPublicReviewsAsync(_reviewsPage, 10, null, ComponentToken));
+        _reviewsError = await LoadAsync(async () => _reviews = await Reviews.GetRecentPublicReviewsAsync(_reviewsPage, 8, null, ComponentToken));
 
     private async Task ReviewsPageAsync(int page)
     {
@@ -154,6 +280,30 @@
         if (error is not null)
         {
             Toasts.Error(error);
+        }
+    }
+
+    private async Task FollowAsync(PersonDto person)
+    {
+        if (_userId is { } userId && await RunAsync(() => Social.FollowAsync(userId, person.Handle, ComponentToken), "You’re following " + person.DisplayName + "."))
+        {
+            await LoadSocialAsync();
+        }
+    }
+
+    private async Task UnfollowAsync(PersonDto person)
+    {
+        if (_userId is { } userId && await RunAsync(() => Social.UnfollowAsync(userId, person.Handle, ComponentToken), "Unfollowed " + person.DisplayName + "."))
+        {
+            await LoadSocialAsync();
+        }
+    }
+
+    private async Task JoinAsync(ChallengeSummaryDto challenge)
+    {
+        if (_userId is { } userId && await RunAsync(() => Challenges.JoinAsync(userId, challenge.Id, ComponentToken), "You joined " + challenge.Title + "."))
+        {
+            await LoadChallengesAsync();
         }
     }
 }

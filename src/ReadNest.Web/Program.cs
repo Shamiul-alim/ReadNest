@@ -142,6 +142,10 @@ if (app.Configuration.GetValue("Https:Redirect", true))
     app.UseHttpsRedirection();
 }
 
+// Routing must run after UseStatusCodePagesWithReExecute; otherwise the implicit routing at the start of the pipeline
+// has already picked "no endpoint" and the re-executed /not-found request comes back as an empty 404.
+app.UseRouting();
+
 app.UseSecurityHeaders();
 app.UseHttpLogging();
 app.UseAuthentication();

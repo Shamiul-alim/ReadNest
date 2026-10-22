@@ -1,37 +1,12 @@
 @using ReadNest.Application.Social
-<div class="rn-grid rn-grid-3">
+<div class="rn-grid" style="grid-template-columns:repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap:16px">
     @foreach (var challenge in Challenges)
     {
-        <article class="rn-card" @key="challenge.Id">
-            <div class="rn-flex rn-between">
-                <span class="rn-feature-icon rn-mb-0"><Icon Name="trophy" /></span>
-                <span class="rn-status @StatusClass(challenge)">@StatusText(challenge)</span>
-            </div>
-            <h3 class="h5 mt-3"><a class="rn-list-title" href="@("challenges/" + challenge.Id)">@challenge.Title</a></h3>
-            <p class="rn-subtle rn-mb-0">
-                @challenge.TargetBooks books · @challenge.StartsOn.ToString("d MMM yyyy") – @challenge.EndsOn.ToString("d MMM yyyy")
-            </p>
-            <p class="rn-subtle">
-                @challenge.ParticipantCount participant@(challenge.ParticipantCount == 1 ? "" : "s")
-                @if (!challenge.IsPublic)
-                {
-                    <span> · <Icon Name="lock" /> Private</span>
-                }
-                @if (challenge.IsParticipant)
-                {
-                    <span> · You're in</span>
-                }
-            </p>
-            <a class="rn-btn rn-btn-secondary rn-btn-sm" href="@("challenges/" + challenge.Id)">View</a>
-        </article>
+        <ChallengeCard Challenge="challenge" Today="Today" @key="challenge.Id" />
     }
 </div>
 
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<ChallengeSummaryDto> Challenges { get; set; } = [];
     [Parameter] public DateOnly Today { get; set; }
-
-    private string StatusText(ChallengeSummaryDto c) => Today < c.StartsOn ? "Upcoming" : Today > c.EndsOn ? "Ended" : "Active";
-
-    private string StatusClass(ChallengeSummaryDto c) => Today < c.StartsOn ? "rn-status-WantToRead" : Today > c.EndsOn ? "rn-status-Paused" : "rn-status-CurrentlyReading";
 }

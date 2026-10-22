@@ -46,8 +46,11 @@ public abstract class ReadNestComponentBase : ComponentBase, IDisposable
     protected async Task<Guid> RequireUserIdAsync() =>
         await GetUserIdAsync() ?? throw new UnauthorizedAccessException("Please sign in again.");
 
-    /// <summary>Runs a user action with busy tracking. Returns true on success; failures are shown as toasts.</summary>
-    protected async Task<bool> RunAsync(Func<Task> action, string? successMessage = null)
+    /// <summary>
+    /// Runs a user action with busy tracking. Returns true on success; failures are shown as toasts. When
+    /// <paramref name="undo"/> is given, the success toast offers an Undo button that runs it.
+    /// </summary>
+    protected async Task<bool> RunAsync(Func<Task> action, string? successMessage = null, Func<Task>? undo = null)
     {
         if (IsBusy)
         {
@@ -60,7 +63,22 @@ public abstract class ReadNestComponentBase : ComponentBase, IDisposable
             await action();
             if (successMessage is not null)
             {
-                Toasts.Success(successMessage);
+                Toasts.Success(successMessage, undo is null ? null : () => InvokeAsync(async () =>
+                {
+                    try
+                    {
+                        await undo();
+                    }
+                    catch (Exception ex) when (Describe(ex) is { } message)
+                    {
+                        Toasts.Error(message);
+                    }
+
+                    if (!_disposed.IsCancellationRequested)
+                    {
+                        StateHasChanged();
+                    }
+                }));
             }
 
             return true;

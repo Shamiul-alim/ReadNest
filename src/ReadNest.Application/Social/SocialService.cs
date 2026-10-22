@@ -2,13 +2,14 @@ using Microsoft.EntityFrameworkCore;
 using ReadNest.Application.Abstractions;
 using ReadNest.Application.Common;
 using ReadNest.Domain.Entities;
+using ReadNest.Application.Library;
 using ReadNest.Domain.Enums;
 
 namespace ReadNest.Application.Social;
 
 public sealed record PersonDto(string Handle, string DisplayName, string? ProfileImageUrl, string? Bio, bool IsPublic);
 
-public sealed record PublicShelfLinkDto(string Name, string ShareSlug, int BookCount);
+public sealed record PublicShelfLinkDto(string Name, string ShareSlug, int BookCount, IReadOnlyList<ShelfPreviewDto>? Previews = null);
 
 public sealed record PublicBookDto(Guid BookId, string Title, IReadOnlyList<string> Authors, string? CoverUrl, ReadingStatus Status, int? Rating, bool IsCatalogBook);
 
@@ -56,7 +57,7 @@ public sealed class SocialService(IReadNestDbContextFactory dbFactory, UserClock
         var shelves = await db.CustomShelves.AsNoTracking()
             .Where(s => s.UserId == profile.UserId && s.IsPublic)
             .OrderBy(s => s.Name)
-            .Select(s => new PublicShelfLinkDto(s.Name, s.ShareSlug, s.Entries.Count))
+            .Select(s => new PublicShelfLinkDto(s.Name, s.ShareSlug, s.Entries.Count, s.Entries.OrderByDescending(e => e.AddedAtUtc).Take(4).Select(e => new ShelfPreviewDto(e.UserBook.Book.Title, e.UserBook.Book.CoverImageUrl)).ToList()))
             .ToListAsync(cancellationToken);
 
         return new PublicProfileDto(

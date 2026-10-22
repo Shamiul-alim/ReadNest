@@ -18,7 +18,7 @@ public enum LoanFilter
     Available = 2,
 }
 
-public sealed record CollectionQuery(string? Search = null, BookFormat? Format = null, LoanFilter Loans = LoanFilter.All, int Page = 1, int PageSize = 24);
+public sealed record CollectionQuery(string? Search = null, BookFormat? Format = null, LoanFilter Loans = LoanFilter.All, int Page = 1, int PageSize = 24, OwnershipStatus Ownership = OwnershipStatus.Owned);
 
 public sealed record LoanDto(
     Guid Id,
@@ -30,7 +30,8 @@ public sealed record LoanDto(
     DateOnly? DueOn,
     DateOnly? ReturnedOn,
     string? Notes,
-    bool IsOverdue);
+    bool IsOverdue,
+    string? CoverUrl = null);
 
 public sealed record CollectionItemDto(
     Guid EntryId,
@@ -91,7 +92,8 @@ public sealed class CollectionService(IReadNestDbContextFactory dbFactory, UserC
     {
         await using var db = await dbFactory.CreateAsync(cancellationToken);
         var today = await clock.GetTodayAsync(db, userId, cancellationToken);
-        var items = db.UserBooks.AsNoTracking().Where(ub => ub.UserId == userId && ub.Ownership == OwnershipStatus.Owned);
+        var ownership = query.Ownership == OwnershipStatus.Borrowed ? OwnershipStatus.Borrowed : OwnershipStatus.Owned;
+        var items = db.UserBooks.AsNoTracking().Where(ub => ub.UserId == userId && ub.Ownership == ownership);
         if (query.Format is { } format)
         {
             items = format == BookFormat.Physical
@@ -126,7 +128,7 @@ public sealed class CollectionService(IReadNestDbContextFactory dbFactory, UserC
                 ub.ConditionNotes,
                 ub.Status,
                 ub.Loans.Where(l => l.ReturnedOn == null)
-                    .Select(l => new LoanDto(l.Id, ub.Id, ub.BookId, ub.Book.Title, l.BorrowerName, l.LoanedOn, l.DueOn, l.ReturnedOn, l.Notes, l.DueOn < today))
+                    .Select(l => new LoanDto(l.Id, ub.Id, ub.BookId, ub.Book.Title, l.BorrowerName, l.LoanedOn, l.DueOn, l.ReturnedOn, l.Notes, l.DueOn < today, ub.Book.CoverImageUrl))
                     .FirstOrDefault()))
             .ToPagedResultAsync(query.Page, query.PageSize, cancellationToken);
     }
@@ -150,7 +152,7 @@ public sealed class CollectionService(IReadNestDbContextFactory dbFactory, UserC
             .OrderBy(l => l.ReturnedOn != null)
             .ThenByDescending(l => l.LoanedOn)
             .Take(500)
-            .Select(l => new LoanDto(l.Id, l.UserBookId, l.UserBook.BookId, l.UserBook.Book.Title, l.BorrowerName, l.LoanedOn, l.DueOn, l.ReturnedOn, l.Notes, l.ReturnedOn == null && l.DueOn < today))
+            .Select(l => new LoanDto(l.Id, l.UserBookId, l.UserBook.BookId, l.UserBook.Book.Title, l.BorrowerName, l.LoanedOn, l.DueOn, l.ReturnedOn, l.Notes, l.ReturnedOn == null && l.DueOn < today, l.UserBook.Book.CoverImageUrl))
             .ToListAsync(cancellationToken);
     }
 

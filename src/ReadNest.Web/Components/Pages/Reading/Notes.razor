@@ -2,83 +2,140 @@
 @attribute [Authorize]
 @rendermode AppRenderMode.Interactive
 @inherits ReadNestComponentBase
+@using ReadNest.Application.Library
 @using ReadNest.Application.Notes
+@using ReadNest.Web.Components.Book
 @inject NoteService NoteService
+@inject LibraryService Library
 
 <AppTitle Text="Notes & journal" />
 
-<PageHeader Title="Notes &amp; journal" Description="Every note, quote, takeaway, lesson and action item you've saved — searchable and private to you." />
-
-<form class="rn-card tight rn-toolbar" role="search" @onsubmit="Apply">
-    <div class="rn-field rn-grow">
-        <label class="rn-label" for="notes-search">Search notes</label>
-        <input id="notes-search" class="rn-input" type="search" maxlength="200" placeholder="Words in a note, chapter or book title" @bind="_search" />
-    </div>
-    <div class="rn-field">
-        <label class="rn-label" for="notes-type">Type</label>
-        <select id="notes-type" class="rn-select" @bind="_type">
-            <option value="">All types</option>
-            @foreach (var type in Enum.GetValues<NoteType>())
-            {
-                <option value="@type">@type.ToDisplayName()</option>
-            }
-        </select>
-    </div>
-    <div class="rn-field">
-        <label class="rn-label" for="notes-book">Book</label>
-        <select id="notes-book" class="rn-select" @bind="_entry">
-            <option value="">All books</option>
-            @foreach (var book in _books)
-            {
-                <option value="@book.EntryId">@book.Title (@book.Count)</option>
-            }
-        </select>
-    </div>
-    <button type="submit" class="rn-btn rn-btn-primary"><Icon Name="search" /> Search</button>
-</form>
-
 @if (_error is not null)
 {
-    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+    <ErrorAlert Message="@_error" Title="We couldn’t load your journal" OnRetry="RefreshAsync" />
 }
 else if (_notes is null)
 {
-    <LoadingIndicator />
+    <LoadingIndicator Kind="rows" Text="Opening your journal…" />
 }
-else if (_notes.TotalCount == 0)
+else if (_notes.TotalCount == 0 && !Filtered)
 {
-    @if (string.IsNullOrWhiteSpace(Q) && Type is null && Entry is null)
-    {
-        <EmptyState Title="Your journal is empty" IconName="pen" Text="Open a book from your library and add notes, quotes or key takeaways as you read.">
-            <a class="rn-btn rn-btn-primary" href="library/currently-reading">Go to Currently Reading</a>
-        </EmptyState>
-    }
-    else
-    {
-        <EmptyState Title="No matching notes" IconName="search" Text="Try other words or remove a filter." />
-    }
+    <div class="rn-empty" style="max-width:620px">
+        <span class="rn-icon-circle lg"><Icon Name="notebook" /></span>
+        <h1 tabindex="-1">Your journal is empty, for now</h1>
+        <p style="color:var(--color-text)">Save a line you underlined, a lesson you want to remember or something you mean to try. Each note links back to its book and page.</p>
+        @if (_books.Count > 0)
+        {
+            <button type="button" class="rn-btn rn-btn-primary" @onclick="() => OpenNew(NoteType.General)"><Icon Name="pen-line" />Write your first note</button>
+        }
+        else
+        {
+            <a class="rn-btn rn-btn-primary" href="explore"><Icon Name="compass" />Add a book first</a>
+        }
+    </div>
 }
 else
 {
-    <p class="rn-subtle">@_notes.TotalCount.ToString("N0") note@(_notes.TotalCount == 1 ? "" : "s")</p>
-    @foreach (var note in _notes.Items)
-    {
-        <NoteCard Note="note" OnEdit="() => OpenEdit(note)" OnDelete="() => DeleteAsync(note)" @key="note.Id" />
-    }
-    <Pager Page="_notes.Page" TotalPages="_notes.TotalPages" TotalCount="_notes.TotalCount" ItemName="notes" OnPageChanged="GoToPage" />
+    <div class="rn-page snug">
+        <PageHeader Title="Notes & journal" Description="@(Formats.Count(_total, "note") + " from " + Formats.Count(_withNotes.Count, "book") + ". Everything you keep, in one quiet place.")">
+            <Actions>
+                <button type="button" class="rn-btn rn-btn-primary" @onclick="() => OpenNew(NoteType.General)"><Icon Name="plus" />New note</button>
+            </Actions>
+        </PageHeader>
+        <div class="rn-toolbar">
+            <form class="rn-input-icon" role="search" style="flex:1 1 240px; max-width:420px" @onsubmit="Apply" @onsubmit:preventDefault>
+                <Icon Name="search" />
+                <input class="rn-input" type="search" maxlength="200" aria-label="Search your notes" placeholder="Search your notes" style="min-height:44px; font-size:15px" @bind="_search" />
+            </form>
+            <label class="rn-sort">
+                Book
+                <select class="rn-select" value="@(Entry?.ToString() ?? "")" @onchange="OnBookChanged">
+                    <option value="">All books</option>
+                    @foreach (var book in _withNotes)
+                    {
+                        <option value="@book.EntryId">@book.Title (@book.Count)</option>
+                    }
+                </select>
+            </label>
+        </div>
+        <div aria-label="Filter by note type" class="rn-chips">
+            <a class="rn-filter" aria-pressed="@(TypeFilter is null ? "true" : "false")" href="@Link(type: "", keepType: false)">All</a>
+            @foreach (var type in Enum.GetValues<NoteType>())
+            {
+                <a class="rn-filter" aria-pressed="@(TypeFilter == type ? "true" : "false")" href="@Link(type: type.ToString(), keepType: false)">@type.ToDisplayName()</a>
+            }
+        </div>
+
+        @if (_notes.TotalCount == 0)
+        {
+            <div class="rn-empty plain">
+                <h2>No notes match</h2>
+                <p>Try another word, or clear the filters to see everything.</p>
+                <div class="rn-actions"><a class="rn-btn rn-btn-secondary" href="notes">Clear filters</a></div>
+            </div>
+        }
+        else
+        {
+            <div style="display:flex; flex-wrap:wrap; gap:28px; align-items:flex-start">
+                <div role="list" class="rn-note-list @(_paneOnMobile ? "rn-hide-mobile" : null)">
+                    @foreach (var note in _notes.Items)
+                    {
+                        <button type="button" role="listitem" class="rn-note-item" aria-current="@(_selected?.Id == note.Id ? "true" : "false")" @onclick="() => Pick(note)" @key="note.Id">
+                            <span style="display:flex; justify-content:space-between; gap:10px; align-items:center">
+                                <NoteTypeBadge Type="note.Type" />
+                                <span class="rn-small rn-muted">@Formats.Short(DateOnly.FromDateTime(note.CreatedAtUtc), _today)</span>
+                            </span>
+                            <span class="text">@(note.Type == NoteType.Quote ? "“" + note.Content + "”" : note.Content)</span>
+                            <span class="ref">@note.BookTitle@(NoteCard.Reference(note) is { } r ? " · " + r : "")</span>
+                        </button>
+                    }
+                    @if (_notes.HasNext || _notes.HasPrevious)
+                    {
+                        <Pager Page="_notes.Page" TotalPages="_notes.TotalPages" TotalCount="_notes.TotalCount" ItemName="notes" OnPageChanged="GoToPage" />
+                    }
+                </div>
+                @if (_selected is { } sel)
+                {
+                    <article aria-label="Selected note" class="rn-note-pane @(_paneOnMobile ? null : "rn-hide-mobile")">
+                        <button type="button" class="rn-btn rn-btn-ghost rn-only-mobile" style="align-self:flex-start" @onclick="() => _paneOnMobile = false"><Icon Name="arrow-left" />All notes</button>
+                        <div style="display:flex; flex-wrap:wrap; justify-content:space-between; gap:10px; align-items:center">
+                            <NoteTypeBadge Type="sel.Type" Large="true" />
+                            @if (NoteCard.Reference(sel) is { } reference)
+                            {
+                                <span class="rn-subtle">@reference</span>
+                            }
+                        </div>
+                        @if (sel.Type == NoteType.Quote)
+                        {
+                            <blockquote>“@sel.Content”</blockquote>
+                        }
+                        else
+                        {
+                            <p class="body">@sel.Content</p>
+                        }
+                        <a class="rn-row-link" style="align-self:flex-start; margin:0 -12px; padding:12px" href="@("books/" + sel.BookId)">
+                            <BookCover Title="@sel.BookTitle" Author="@(sel.Authors is { Count: > 0 } a ? a[0] : null)" Url="@sel.CoverUrl" Size="xs" />
+                            <span class="rn-list-body">
+                                <span class="rn-list-title">@sel.BookTitle</span>
+                                <span class="rn-subtle">@(sel.Authors is { Count: > 0 } names ? string.Join(", ", names) : "")</span>
+                            </span>
+                            <Icon Name="chevron-right" />
+                        </a>
+                        <div class="rn-note-pane-foot">
+                            <span>Saved @Formats.Long(sel.CreatedAtUtc)@(sel.UpdatedAtUtc > sel.CreatedAtUtc.AddMinutes(1) ? " · edited " + Formats.Long(sel.UpdatedAtUtc) : "")</span>
+                            <div class="rn-actions" style="gap:8px">
+                                <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" @onclick="() => OpenEdit(sel)"><Icon Name="pencil" />Edit</button>
+                                <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm" disabled="@IsBusy" @onclick="() => DeleteAsync(sel)"><Icon Name="trash" />Delete</button>
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </div>
 }
 
-<Modal Title="Edit note" @bind-Open="_editOpen">
-    <EditForm Model="_editModel" OnValidSubmit="SaveAsync" class="rn-form">
-        <DataAnnotationsValidator />
-        <NoteFields Model="_editModel" IdPrefix="journal-note" />
-        <div class="rn-form-actions">
-            <button type="button" class="rn-btn rn-btn-secondary" @onclick="() => _editOpen = false">Cancel</button>
-            <button type="submit" class="rn-btn rn-btn-primary" disabled="@IsBusy">Save changes</button>
-        </div>
-    </EditForm>
-</Modal>
-
+<NoteDialog @bind-Open="_dialogOpen" UserId="_userId" EntryId="@(_editing is null ? Entry : null)" Books="_books" Note="_editing" InitialType="_newType" OnSaved="AfterSaveAsync" />
 <ConfirmDialog @ref="_confirm" />
 
 @code {
@@ -88,21 +145,32 @@ else
     [SupplyParameterFromQuery(Name = "page")] public int? PageNumber { get; set; }
 
     private Guid _userId;
+    private DateOnly _today;
     private PagedResult<NoteDto>? _notes;
-    private IReadOnlyList<NamedEntryDto> _books = [];
-    private string? _error;
+    private IReadOnlyList<NamedEntryDto> _withNotes = [];
+    private IReadOnlyList<NoteDialog.BookOption> _books = [];
+    private NoteDto? _selected;
+    private NoteDto? _editing;
+    private NoteType _newType;
+    private bool _dialogOpen;
+    private bool _paneOnMobile;
+    private int _total;
     private string _search = "";
-    private string _type = "";
-    private string _entry = "";
-    private bool _editOpen;
-    private Guid? _editingId;
-    private NoteFormModel _editModel = new();
+    private string? _error;
     private ConfirmDialog _confirm = default!;
+
+    private NoteType? TypeFilter => Enum.TryParse<NoteType>(Type, ignoreCase: true, out var type) && Enum.IsDefined(type) ? type : null;
+
+    private bool Filtered => !string.IsNullOrWhiteSpace(Q) || TypeFilter is not null || Entry is not null;
 
     protected override async Task OnInitializedAsync()
     {
         _userId = await RequireUserIdAsync();
-        var error = await LoadAsync(async () => _books = await NoteService.GetBooksWithNotesAsync(_userId, ComponentToken));
+        var error = await LoadAsync(async () =>
+        {
+            _today = await Library.GetTodayAsync(_userId, ComponentToken);
+            await LoadBooksAsync();
+        });
         if (error is not null)
         {
             Toasts.Error(error);
@@ -112,59 +180,84 @@ else
     protected override async Task OnParametersSetAsync()
     {
         _search = Q ?? "";
-        _type = Type ?? "";
-        _entry = Entry?.ToString() ?? "";
         await RefreshAsync();
+    }
+
+    private async Task LoadBooksAsync()
+    {
+        _withNotes = await NoteService.GetBooksWithNotesAsync(_userId, ComponentToken);
+        _total = _withNotes.Sum(b => b.Count);
+        var library = await Library.ListAsync(_userId, new LibraryQuery { Sort = LibrarySort.LastUpdated, PageSize = 100 }, ComponentToken);
+        _books = library.Items.Select(e => new NoteDialog.BookOption(e.Id, e.Title)).ToList();
     }
 
     private async Task RefreshAsync()
     {
-        NoteType? type = Enum.TryParse<NoteType>(Type, out var t) ? t : null;
         _error = await LoadAsync(async () =>
-            _notes = await NoteService.SearchAsync(_userId, new NoteQuery(Q, type, Entry, PageNumber ?? 1, 20), ComponentToken));
+        {
+            _notes = await NoteService.SearchAsync(_userId, new NoteQuery(Q, TypeFilter, Entry, PageNumber ?? 1, 20), ComponentToken);
+            _selected = _notes.Items.FirstOrDefault(n => n.Id == _selected?.Id) ?? _notes.Items.FirstOrDefault();
+        });
     }
 
-    private void Apply() => Navigate(1);
+    private void Pick(NoteDto note)
+    {
+        _selected = note;
+        _paneOnMobile = true;
+    }
 
-    private void GoToPage(int page) => Navigate(page);
+    private string Link(string? type = null, bool keepType = true) =>
+        Navigation.GetUriWithQueryParameters("notes", new Dictionary<string, object?>
+        {
+            ["q"] = string.IsNullOrWhiteSpace(Q) ? null : Q,
+            ["type"] = keepType ? Type : string.IsNullOrEmpty(type) ? null : type,
+            ["entry"] = Entry,
+            ["page"] = null,
+        });
 
-    private void Navigate(int page) =>
+    private void Apply() =>
         Navigation.NavigateTo(Navigation.GetUriWithQueryParameters("notes", new Dictionary<string, object?>
         {
             ["q"] = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(),
-            ["type"] = string.IsNullOrEmpty(_type) ? null : _type,
-            ["entry"] = Guid.TryParse(_entry, out var entry) ? entry : null,
-            ["page"] = page > 1 ? page : null,
+            ["page"] = null,
         }));
+
+    private void OnBookChanged(ChangeEventArgs e) =>
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters("notes", new Dictionary<string, object?>
+        {
+            ["entry"] = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null,
+            ["page"] = null,
+        }));
+
+    private void GoToPage(int page) =>
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("page", page > 1 ? page : null));
+
+    private void OpenNew(NoteType type)
+    {
+        _editing = null;
+        _newType = type;
+        _dialogOpen = true;
+    }
 
     private void OpenEdit(NoteDto note)
     {
-        _editingId = note.Id;
-        _editModel = new NoteFormModel { Type = note.Type, Content = note.Content, PageNumber = note.PageNumber, Chapter = note.Chapter };
-        _editOpen = true;
+        _editing = note;
+        _dialogOpen = true;
     }
 
-    private async Task SaveAsync()
+    private async Task AfterSaveAsync()
     {
-        if (_editingId is not { } id)
-        {
-            return;
-        }
-
-        var request = new NoteRequest(_editModel.Type, _editModel.Content, _editModel.PageNumber, _editModel.Chapter);
-        if (await RunAsync(() => NoteService.UpdateAsync(_userId, id, request, ComponentToken), "Note updated."))
-        {
-            _editOpen = false;
-            await RefreshAsync();
-        }
+        await LoadAsync(LoadBooksAsync);
+        await RefreshAsync();
     }
 
     private async Task DeleteAsync(NoteDto note)
     {
-        if (await _confirm.ConfirmAsync("Delete note?", "This note will be permanently deleted.", "Delete")
+        if (await _confirm.ConfirmAsync("Delete this note?", "It will be removed from your journal. This can’t be undone.", "Delete note")
             && await RunAsync(() => NoteService.DeleteAsync(_userId, note.Id, ComponentToken), "Note deleted."))
         {
-            await RefreshAsync();
+            _selected = null;
+            await AfterSaveAsync();
         }
     }
 }

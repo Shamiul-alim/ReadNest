@@ -1,14 +1,17 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-@* Accessible modal built on the native <dialog> element: focus is trapped by the browser, Escape closes it,
-   and the page behind becomes inert. *@
+@* Accessible dialog on the native <dialog> element: the browser traps focus, Esc and a backdrop click close it,
+   and the page behind becomes inert. Below 700px it docks to the bottom as a sheet. *@
 @if (Open)
 {
     <dialog @ref="_dialog" class="rn-dialog @(Wide ? "wide" : null)" aria-labelledby="@_titleId">
         <div class="rn-dialog-header">
-            <h2 id="@_titleId">@Title</h2>
-            <button type="button" class="rn-btn rn-btn-ghost rn-btn-icon" aria-label="Close dialog" @onclick="CloseAsync"><Icon Name="x" /></button>
+            <h2 id="@_titleId">@Title@if (!string.IsNullOrEmpty(Subtitle))
+                {
+                    <span class="sub">@Subtitle</span>
+                }</h2>
+            <button type="button" class="rn-btn rn-btn-icon" aria-label="Close" @onclick="CloseAsync"><Icon Name="x" /></button>
         </div>
         <div class="rn-dialog-body">
             @ChildContent
@@ -29,6 +32,7 @@
     [Parameter] public bool Open { get; set; }
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
     [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
     [Parameter] public bool Wide { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? Footer { get; set; }
@@ -62,6 +66,11 @@
 
     public async Task CloseAsync()
     {
+        if (!Open)
+        {
+            return;
+        }
+
         Open = false;
         _shown = false;
         await OpenChanged.InvokeAsync(false);

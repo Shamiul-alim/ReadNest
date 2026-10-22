@@ -1,0 +1,152 @@
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Library
+@inject CollectionService Collection
+@inject LibraryService Library
+
+@* Lend an owned copy: book (when not fixed), who, the day it went and when it should come back. *@
+<Modal Title="Lend a book" Subtitle="@BookTitle" Open="Open" OpenChanged="OnOpenChanged">
+    <ChildContent>
+        <form id="@_formId" @onsubmit="SaveAsync" @onsubmit:preventDefault novalidate style="display:flex; flex-direction:column; gap:16px">
+            @if (EntryId is null)
+            {
+                <div class="rn-field">
+                    <label class="rn-label" for="@(_formId + "-book")">Book</label>
+                    @if (_available is null)
+                    {
+                        <LoadingIndicator Kind="inline" />
+                    }
+                    else if (_available.Count == 0)
+                    {
+                        <span class="rn-subtle">Every book you own is either lent out or not marked as owned yet. Mark a book as owned on its page first.</span>
+                    }
+                    else
+                    {
+                        <select id="@(_formId + "-book")" class="rn-select @(_attempted && _entry is null ? "invalid" : null)" @bind="_entry">
+                            <option value="">Choose a book you own…</option>
+                            @foreach (var item in _available)
+                            {
+                                <option value="@item.EntryId">@item.Title</option>
+                            }
+                        </select>
+                    }
+                </div>
+            }
+            <div class="rn-field">
+                <label class="rn-label" for="@(_formId + "-who")">Lent to</label>
+                <input id="@(_formId + "-who")" data-autofocus class="rn-input @(_attempted && WhoError is not null ? "invalid" : null)" maxlength="200" autocomplete="off" placeholder="Name"
+                       @bind="_who" @bind:event="oninput" />
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px">
+                <div class="rn-field">
+                    <label class="rn-label" for="@(_formId + "-on")">Lent on</label>
+                    <input id="@(_formId + "-on")" class="rn-input" type="date" value="@Iso(_lentOn)" @onchange="e => _lentOn = Parse(e)" />
+                </div>
+                <div class="rn-field">
+                    <label class="rn-label" for="@(_formId + "-due")">Expected back <span class="optional">(optional)</span></label>
+                    <input id="@(_formId + "-due")" class="rn-input @(DueError is null ? null : "invalid")" type="date" min="@Iso(_lentOn)" value="@Iso(_due)" @onchange="e => _due = Parse(e)" />
+                </div>
+            </div>
+            <div class="rn-field">
+                <label class="rn-label" for="@(_formId + "-notes")">Notes <span class="optional">(optional)</span></label>
+                <input id="@(_formId + "-notes")" class="rn-input" maxlength="1000" placeholder="e.g. Signed copy, please be gentle" @bind="_notes" @bind:event="oninput" />
+            </div>
+            @if (_attempted && Error is { } error)
+            {
+                <span class="rn-error-text" role="alert"><Icon Name="alert" />@error</span>
+            }
+        </form>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="rn-btn rn-btn-secondary" @onclick="CloseAsync">Cancel</button>
+        <button type="submit" form="@_formId" class="rn-btn rn-btn-primary" disabled="@IsBusy">Save loan</button>
+    </Footer>
+</Modal>
+
+@code {
+    private readonly string _formId = "lend-" + Guid.NewGuid().ToString("N")[..8];
+    private IReadOnlyList<CollectionItemDto>? _available;
+    private Guid? _entry;
+    private string _who = "";
+    private DateOnly? _lentOn;
+    private DateOnly? _due;
+    private string? _notes;
+    private bool _attempted;
+    private bool _wasOpen;
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter, EditorRequired] public Guid UserId { get; set; }
+
+    /// <summary>The copy being lent; null lets the reader choose one of the books they own.</summary>
+    [Parameter] public Guid? EntryId { get; set; }
+    [Parameter] public string? BookTitle { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private string? WhoError => string.IsNullOrWhiteSpace(_who) ? "Who are you lending it to?" : null;
+
+    private string? DueError => _due is { } due && _lentOn is { } on && due < on ? "The return date can’t be before the day you lent it." : null;
+
+    private string? Error =>
+        EntryId is null && _entry is null ? "Choose the book you’re lending." :
+        WhoError ?? (_lentOn is null ? "Choose the day you lent it." : DueError);
+
+    private static string? Iso(DateOnly? date) => date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private static DateOnly? Parse(ChangeEventArgs e) =>
+        DateOnly.TryParseExact(e.Value?.ToString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Open && !_wasOpen)
+        {
+            _wasOpen = true;
+            _attempted = false;
+            _who = "";
+            _notes = null;
+            _due = null;
+            _entry = EntryId;
+            var error = await LoadAsync(async () =>
+            {
+                _lentOn = await Library.GetTodayAsync(UserId, ComponentToken);
+                if (EntryId is null)
+                {
+                    _available = (await Collection.GetCollectionAsync(UserId, new CollectionQuery(Loans: LoanFilter.Available, PageSize: 100), ComponentToken)).Items;
+                }
+            });
+            if (error is not null)
+            {
+                Toasts.Error(error);
+            }
+        }
+        else if (!Open)
+        {
+            _wasOpen = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _attempted = true;
+        if (Error is not null)
+        {
+            return;
+        }
+
+        var entryId = EntryId ?? _entry!.Value;
+        var request = new LoanRequest(_who.Trim(), _lentOn, _due, string.IsNullOrWhiteSpace(_notes) ? null : _notes.Trim());
+        if (await RunAsync(() => Collection.LendAsync(UserId, entryId, request, ComponentToken), "Lent to " + request.BorrowerName + "."))
+        {
+            await CloseAsync();
+            await OnSaved.InvokeAsync();
+        }
+    }
+
+    private async Task OnOpenChanged(bool open)
+    {
+        Open = open;
+        _wasOpen = open;
+        await OpenChanged.InvokeAsync(open);
+    }
+
+    private Task CloseAsync() => OnOpenChanged(false);
+}

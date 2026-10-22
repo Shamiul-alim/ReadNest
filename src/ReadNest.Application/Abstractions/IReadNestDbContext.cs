@@ -45,6 +45,8 @@ public interface IReadNestDbContext : IAsyncDisposable
 
     DbSet<ChallengeParticipant> ChallengeParticipants { get; }
 
+    DbSet<RecommendationDismissal> RecommendationDismissals { get; }
+
     DatabaseFacade Database { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

@@ -18,41 +18,43 @@
 
 <PageTitle>Create your account · ReadNest</PageTitle>
 
-<h1>Create your account</h1>
-
-<div class="row">
-    <div class="col-12">
-        <StatusMessage Message="@Message" />
-        <EditForm Model="Input" method="post" OnValidSubmit="RegisterUser" FormName="register">
-            <DataAnnotationsValidator />
-            <h2>Start your personal library — it's free.</h2>
-            <hr />
-            <ValidationSummary class="text-danger" role="alert" />
-            <div class="form-floating mb-3">
-                <InputText @bind-Value="Input.DisplayName" id="Input.DisplayName" class="form-control" autocomplete="nickname" aria-required="true" placeholder="Your name" />
-                <label for="Input.DisplayName">Display name</label>
-                <ValidationMessage For="() => Input.DisplayName" class="text-danger" />
-            </div>
-            <input type="hidden" name="Input.TimeZone" value="@Input.TimeZone" data-timezone />
-            <div class="form-floating mb-3">
-                <InputText @bind-Value="Input.Email" id="Input.Email" class="form-control" autocomplete="username" aria-required="true" placeholder="name@example.com" />
-                <label for="Input.Email">Email</label>
-                <ValidationMessage For="() => Input.Email" class="text-danger" />
-            </div>
-            <div class="form-floating mb-3">
-                <InputText type="password" @bind-Value="Input.Password" id="Input.Password" class="form-control" autocomplete="new-password" aria-required="true" placeholder="password" />
-                <label for="Input.Password">Password</label>
-                <ValidationMessage For="() => Input.Password" class="text-danger" />
-            </div>
-            <div class="form-floating mb-3">
-                <InputText type="password" @bind-Value="Input.ConfirmPassword" id="Input.ConfirmPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="password" />
-                <label for="Input.ConfirmPassword">Confirm Password</label>
-                <ValidationMessage For="() => Input.ConfirmPassword" class="text-danger" />
-            </div>
-            <button type="submit" class="w-100 btn btn-lg btn-primary">Create account</button>
-            <p class="mt-3 rn-subtle">Already have an account? <a href="@(NavigationManager.GetUriWithQueryParameters("Account/Login", new Dictionary<string, object?> { ["ReturnUrl"] = ReturnUrl }))">Log in</a></p>
-        </EditForm>
+<div style="display:flex; flex-direction:column; gap:8px">
+    <h1>Start your library</h1>
+    <p class="rn-auth-sub">Free, and private by default. You can export everything at any time.</p>
+</div>
+<StatusMessage Message="@Message" />
+<EditForm Model="Input" method="post" OnValidSubmit="RegisterUser" FormName="register" class="rn-form" novalidate>
+    <DataAnnotationsValidator />
+    <div class="rn-field">
+        <label for="Input.DisplayName" class="rn-label">Your name</label>
+        <InputText @bind-Value="Input.DisplayName" id="Input.DisplayName" class="rn-input" autocomplete="name" aria-required="true" />
+        <ValidationMessage For="() => Input.DisplayName" />
     </div>
+    <input type="hidden" name="Input.TimeZone" value="@Input.TimeZone" data-timezone />
+    <div class="rn-field">
+        <label for="Input.Email" class="rn-label">Email</label>
+        <InputText @bind-Value="Input.Email" id="Input.Email" type="email" class="rn-input" autocomplete="username" aria-required="true" placeholder="you@example.com" />
+        <ValidationMessage For="() => Input.Email" />
+    </div>
+    <div class="rn-field">
+        <label for="Input.Password" class="rn-label">Password</label>
+        <div class="rn-pw-wrap">
+            <InputText type="password" @bind-Value="Input.Password" id="Input.Password" class="rn-input" autocomplete="new-password" aria-required="true" aria-describedby="pw-rules" data-pw-rules-for="pw-rules" />
+            <button type="button" class="rn-pw-toggle" data-pw-toggle="Input.Password" aria-label="Show password" aria-pressed="false"><Icon Name="eye" /></button>
+        </div>
+        <ul class="rn-pw-rules" id="pw-rules">
+            <li data-rule="length"><Icon Name="check" Size="16" />8 or more characters</li>
+            <li data-rule="case"><Icon Name="check" Size="16" />Upper and lower case</li>
+            <li data-rule="digit"><Icon Name="check" Size="16" />A number</li>
+            <li data-rule="symbol"><Icon Name="check" Size="16" />A symbol</li>
+        </ul>
+        <ValidationMessage For="() => Input.Password" />
+    </div>
+    <button type="submit" class="rn-btn rn-btn-primary rn-btn-block" style="min-height:50px; font-size:16px">Create my library</button>
+</EditForm>
+<div class="rn-auth-alt">
+    <span>Already have an account?</span>
+    <a href="@(NavigationManager.GetUriWithQueryParameters("Account/Login", new Dictionary<string, object?> { ["ReturnUrl"] = ReturnUrl }))">Sign in</a>
 </div>
 
 @code {
@@ -137,7 +139,7 @@
     {
         [Required]
         [StringLength(80, MinimumLength = 1)]
-        [Display(Name = "Display name")]
+        [Display(Name = "Your name")]
         public string DisplayName { get; set; } = "";
 
         [StringLength(64)]
@@ -149,14 +151,9 @@
         public string Email { get; set; } = "";
 
         [Required]
-        [StringLength(100, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 8)]
+        [StringLength(100, ErrorMessage = "Use at least {2} characters.", MinimumLength = 8)]
         [DataType(DataType.Password)]
         [Display(Name = "Password")]
         public string Password { get; set; } = "";
-
-        [DataType(DataType.Password)]
-        [Display(Name = "Confirm password")]
-        [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
-        public string ConfirmPassword { get; set; } = "";
     }
 }

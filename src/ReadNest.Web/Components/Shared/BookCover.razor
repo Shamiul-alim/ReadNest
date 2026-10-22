@@ -1,42 +1,88 @@
-@* A book cover: the provider image when available, layered over a generated typographic cover that remains
-   visible if the image is missing or fails to load. *@
-<div class="rn-cover @Size @Class" style="--rn-cover-bg:@Background" aria-hidden="@(Decorative ? "true" : null)">
-    <div class="rn-cover-fallback">
-        <span class="rn-cover-title">@Title</span>
-        @if (!string.IsNullOrEmpty(Author))
+@* A fixed 2:3 cover. The provider image (or an Open Library cover by ISBN) fades in over a typographic cover in
+   one of six palette tones picked from the title, which stays visible if the image is missing or fails. *@
+<div class="rn-cover tone-@Tone @Size @ShadowClass @Class" role="@(Decorative ? null : "img")" aria-label="@(Decorative ? null : AltText)" aria-hidden="@(Decorative ? "true" : null)">
+    <div class="rn-cover-dot"></div>
+    <div class="rn-cover-type">
+        <div class="rn-cover-title @TitleSize">@DisplayTitle</div>
+        @if (!string.IsNullOrWhiteSpace(Author))
         {
-            <span class="rn-cover-author">@Author</span>
+            <div class="rn-cover-author">@Author</div>
         }
     </div>
-    @if (SafeUrl is not null)
+    @if (ImageUrl is { } src)
     {
-        <img class="rn-cover-img" src="@SafeUrl" alt="@(Decorative ? "" : $"Cover of {Title}")" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+        <img @key="src" class="rn-cover-img" src="@src" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
     }
+    <div class="rn-cover-spine"></div>
 </div>
 
 @code {
-    private static readonly string[] Palette = ["#312e81", "#1e3a5f", "#7c2d12", "#14532d", "#4a1d5c", "#713f12", "#134e4a", "#7f1d1d", "#1f2937", "#3b0764"];
+    private static readonly string[] Tones = ["terra", "sage", "ink", "sand", "clay", "moss"];
 
     [Parameter, EditorRequired] public string Title { get; set; } = "";
     [Parameter] public string? Author { get; set; }
     [Parameter] public string? Url { get; set; }
-    [Parameter] public string Size { get; set; } = "md";
+
+    /// <summary>Used for an Open Library cover when the provider gave no image.</summary>
+    [Parameter] public string? Isbn { get; set; }
+
+    /// <summary>xs (44px), sm (56px), md (112px), lg (hero) or fill (the container's width).</summary>
+    [Parameter] public string Size { get; set; } = "fill";
+
+    /// <summary>none, sm, md or lg elevation.</summary>
+    [Parameter] public string Shadow { get; set; } = "sm";
+
     [Parameter] public string? Class { get; set; }
     [Parameter] public bool Decorative { get; set; } = true;
 
-    private string? SafeUrl => InputSanitizer.SafeExternalUrl(Url);
+    private string DisplayTitle => string.IsNullOrWhiteSpace(Title) ? "Untitled" : Title;
 
-    private string Background
+    private string AltText => "Cover of " + DisplayTitle + (string.IsNullOrWhiteSpace(Author) ? "" : " by " + Author);
+
+    private string ShadowClass => Shadow switch { "md" => "shadow-md", "lg" => "shadow-lg", "none" => "shadow-none", _ => "" };
+
+    /// <summary>Smaller type for long titles, and for long single words that would otherwise break mid-word.</summary>
+    private string TitleSize
     {
         get
         {
-            var hash = 0;
-            foreach (var c in Title)
+            var longestWord = DisplayTitle.Split(' ', StringSplitOptions.RemoveEmptyEntries).Max(w => w.Length);
+            return DisplayTitle.Length > 32 || longestWord > 10 ? "s" : DisplayTitle.Length > 18 || longestWord > 8 ? "m" : "";
+        }
+    }
+
+    private string? ImageUrl
+    {
+        get
+        {
+            if (InputSanitizer.SafeExternalUrl(Url) is { } provided)
+            {
+                return provided;
+            }
+
+            var isbn = string.IsNullOrWhiteSpace(Isbn) ? null : ReadNest.Domain.ValueObjects.Isbn.Clean(Isbn);
+            if (isbn is { Length: 10 or 13 } && isbn.All(c => char.IsDigit(c) || c == 'X'))
+            {
+                var size = Size switch { "xs" or "sm" => "S", "lg" => "L", _ => "M" };
+                return $"https://covers.openlibrary.org/b/isbn/{isbn}-{size}.jpg?default=false";
+            }
+
+            return null;
+        }
+    }
+
+    private string Tone
+    {
+        get
+        {
+            // Same deterministic hash as the design reference, so a book keeps its colour everywhere.
+            uint hash = 7;
+            foreach (var c in DisplayTitle)
             {
                 hash = unchecked(hash * 31 + c);
             }
 
-            return Palette[Math.Abs(hash % Palette.Length)];
+            return Tones[hash % (uint)Tones.Length];
         }
     }
 }

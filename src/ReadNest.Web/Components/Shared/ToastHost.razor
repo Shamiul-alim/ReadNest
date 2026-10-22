@@ -1,13 +1,17 @@
 @implements IDisposable
 @inject ToastService Toasts
 
+@* Ink pill, bottom centre (above the bottom bar on mobile), with Undo for reversible actions. *@
 <div class="rn-toasts" role="status" aria-live="polite" aria-atomic="false">
     @foreach (var toast in Toasts.Current)
     {
         <div class="rn-toast @toast.Kind.ToString().ToLowerInvariant()" @key="toast.Id">
-            <Icon Name="@(toast.Kind switch { ToastKind.Success => "check", ToastKind.Error => "alert", _ => "info" })" />
-            <span>@toast.Message</span>
-            <button type="button" aria-label="Dismiss notification" @onclick="() => Toasts.Dismiss(toast.Id)"><Icon Name="x" /></button>
+            <span><Icon Name="@(toast.Kind == ToastKind.Error ? "alert" : toast.Kind == ToastKind.Success ? "check-circle" : "info")" /><span>@toast.Message</span></span>
+            @if (toast.Undo is not null)
+            {
+                <button type="button" class="rn-toast-undo" @onclick="() => UndoAsync(toast.Id)"><Icon Name="undo" />Undo</button>
+            }
+            <button type="button" class="rn-toast-close" aria-label="Dismiss" @onclick="() => Toasts.Dismiss(toast.Id)"><Icon Name="x" /></button>
         </div>
     }
 </div>
@@ -16,6 +20,18 @@
     protected override void OnInitialized() => Toasts.Changed += OnChanged;
 
     private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task UndoAsync(Guid id)
+    {
+        try
+        {
+            await Toasts.UndoAsync(id);
+        }
+        catch (Exception)
+        {
+            Toasts.Error("That couldn’t be undone. Your books are safe; refresh to see the current state.");
+        }
+    }
 
     public void Dispose() => Toasts.Changed -= OnChanged;
 }

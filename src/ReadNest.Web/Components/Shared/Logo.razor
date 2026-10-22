@@ -1,0 +1,11 @@
+@* The ReadNest mark: two eggs in a nest, drawn with theme tokens so it follows Lamplight. *@
+<svg class="rn-logo" width="@Size" height="@Size" viewBox="0 0 34 34" aria-hidden="true" focusable="false">
+    <circle class="l-bg" cx="17" cy="17" r="17"></circle>
+    <ellipse class="l-a" cx="13.8" cy="14.6" rx="3.3" ry="4.2"></ellipse>
+    <ellipse class="l-b" cx="20.2" cy="13.8" rx="3.3" ry="4.2"></ellipse>
+    <path class="l-c" d="M6.6 17.2h20.8c-.9 5.4-5.2 8.8-10.4 8.8s-9.5-3.4-10.4-8.8z"></path>
+</svg>
+
+@code {
+    [Parameter] public int Size { get; set; } = 34;
+}

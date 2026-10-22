@@ -1,0 +1,17 @@
+@using ReadNest.Application.Library
+@* Up to four covers fanned out, or a dashed placeholder for an empty shelf. Decorative. *@
+<span class="rn-fan @(Small ? "sm" : null)" aria-hidden="true">
+    @foreach (var book in Books.Take(4))
+    {
+        <span><BookCover Title="@book.Title" Url="@book.CoverUrl" Shadow="md" /></span>
+    }
+    @if (Books.Count == 0)
+    {
+        <span class="rn-fan-empty">No books yet</span>
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<ShelfPreviewDto> Books { get; set; } = [];
+    [Parameter] public bool Small { get; set; }
+}

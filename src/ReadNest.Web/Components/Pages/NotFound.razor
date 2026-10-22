@@ -3,10 +3,12 @@
 
 <AppTitle Text="Page not found" />
 
-<EmptyState Title="We couldn't find that page" IconName="compass"
-            Text="The page may have moved, or the link may be incorrect. Private items are also shown as not found to anyone but their owner.">
-    <div class="rn-flex rn-flex-wrap" style="justify-content:center">
+<div class="rn-empty" style="max-width:620px">
+    <span class="rn-icon-circle lg neutral"><Icon Name="compass" /></span>
+    <h1 tabindex="-1">We couldn’t find that page</h1>
+    <p>It may have moved, or the link may be wrong. Private books, shelves and profiles also look like this to anyone but their owner.</p>
+    <div class="rn-actions">
         <a class="rn-btn rn-btn-primary" href="">Go home</a>
-        <a class="rn-btn rn-btn-secondary" href="explore">Explore books</a>
+        <a class="rn-btn rn-btn-secondary" href="explore">Discover books</a>
     </div>
-</EmptyState>
+</div>

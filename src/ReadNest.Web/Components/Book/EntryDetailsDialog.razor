@@ -1,0 +1,91 @@
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Library
+@inject LibraryService Library
+
+@* Per-edition page count, reading dates and private notes for one library entry. *@
+<Modal Title="Reading details" Subtitle="@Entry.Title" Open="Open" OpenChanged="OnOpenChanged">
+    <ChildContent>
+        <EditForm id="@_formId" Model="_form" OnValidSubmit="SaveAsync" class="rn-form">
+            <DataAnnotationsValidator />
+            <div class="rn-field">
+                <label class="rn-label" for="@(_formId + "-pages")">Pages in your edition</label>
+                <InputNumber id="@(_formId + "-pages")" class="rn-input" @bind-Value="_form.TotalPages" min="1" />
+                <span class="rn-hint">Progress percentages use this number.</span>
+                <ValidationMessage For="() => _form.TotalPages" />
+            </div>
+            <div class="rn-form-row">
+                <div class="rn-field">
+                    <label class="rn-label" for="@(_formId + "-start")">Started on</label>
+                    <InputDate id="@(_formId + "-start")" class="rn-input" @bind-Value="_form.StartedOn" />
+                </div>
+                @if (Entry.Status == ReadingStatus.Read)
+                {
+                    <div class="rn-field">
+                        <label class="rn-label" for="@(_formId + "-end")">Finished on</label>
+                        <InputDate id="@(_formId + "-end")" class="rn-input" @bind-Value="_form.CompletedOn" />
+                        <ValidationMessage For="() => _form.CompletedOn" />
+                    </div>
+                }
+            </div>
+            <div class="rn-field">
+                <label class="rn-label" for="@(_formId + "-notes")">Private notes <span class="optional">(only you can see these)</span></label>
+                <InputTextArea id="@(_formId + "-notes")" class="rn-textarea" @bind-Value="_form.PrivateNotes" maxlength="4000" />
+                <ValidationMessage For="() => _form.PrivateNotes" />
+            </div>
+        </EditForm>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="rn-btn rn-btn-secondary" @onclick="CloseAsync">Cancel</button>
+        <button type="submit" form="@_formId" class="rn-btn rn-btn-primary" disabled="@IsBusy">Save details</button>
+    </Footer>
+</Modal>
+
+@code {
+    private readonly string _formId = "details-" + Guid.NewGuid().ToString("N")[..8];
+    private EntryDetailsFormModel _form = new();
+    private bool _wasOpen;
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter, EditorRequired] public Guid UserId { get; set; }
+    [Parameter, EditorRequired] public LibraryEntryDetailsDto Entry { get; set; } = default!;
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen)
+        {
+            _wasOpen = true;
+            _form = new EntryDetailsFormModel
+            {
+                TotalPages = Entry.TotalPages,
+                StartedOn = Entry.StartedOn,
+                CompletedOn = Entry.CompletedOn,
+                PrivateNotes = Entry.PrivateNotes,
+            };
+        }
+        else if (!Open)
+        {
+            _wasOpen = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new UpdateEntryDetailsRequest(_form.TotalPages, _form.StartedOn, Entry.Status == ReadingStatus.Read ? _form.CompletedOn : null, _form.PrivateNotes);
+        if (await RunAsync(() => Library.UpdateDetailsAsync(UserId, Entry.Id, request, ComponentToken), "Details saved."))
+        {
+            await CloseAsync();
+            await OnSaved.InvokeAsync();
+        }
+    }
+
+    private async Task OnOpenChanged(bool open)
+    {
+        Open = open;
+        _wasOpen = open;
+        await OpenChanged.InvokeAsync(open);
+    }
+
+    private Task CloseAsync() => OnOpenChanged(false);
+}

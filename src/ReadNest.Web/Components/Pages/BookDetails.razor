@@ -3,205 +3,350 @@
 @inherits ReadNestComponentBase
 @using ReadNest.Application.Books
 @using ReadNest.Application.Library
+@using ReadNest.Application.Notes
 @using ReadNest.Application.Reviews
 @using ReadNest.Web.Components.Book
 @inject BookService Books
 @inject LibraryService Library
 @inject ReviewService Reviews
+@inject NoteService Notes
 
 <AppTitle Text="@(_book?.Title ?? "Book")" />
 
-@if (_loading)
+@if (_loading && _book is null)
 {
     <LoadingIndicator Text="Loading book…" />
 }
 else if (_error is not null)
 {
-    <PageHeader Title="Book unavailable" />
-    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+    <div class="rn-page tight">
+        <BackLink Href="@(_userId is null ? "explore" : "library")" />
+        <ErrorAlert Message="@_error" Title="We couldn’t open this book" OnRetry="RefreshAsync" />
+    </div>
 }
 else if (_book is not null)
 {
-    <nav class="rn-breadcrumb" aria-label="Breadcrumb">
-        @if (_entry is not null)
-        {
-            <a href="library">My Library</a>
-        }
-        else
-        {
-            <a href="explore">Explore</a>
-        }
-        <Icon Name="chevron-right" /> <span class="rn-truncate">@_book.Title</span>
-    </nav>
-
-    <section class="rn-book-hero">
-        <BookCover Title="@_book.Title" Author="@(_book.Authors.Count > 0 ? _book.Authors[0] : null)" Url="@_book.CoverUrl" Size="lg" Decorative="false" />
-        <div>
-            <h1 tabindex="-1">@_book.Title</h1>
-            @if (_book.Subtitle is not null)
-            {
-                <div class="rn-subtitle">@_book.Subtitle</div>
-            }
-            <p class="rn-muted">
-                @if (_book.Authors.Count == 0)
-                {
-                    <span>Author unknown</span>
-                }
-                else
-                {
-                    <span>by </span>
-                    @for (var i = 0; i < _book.Authors.Count; i++)
+    <div class="rn-page">
+        <div style="display:flex; flex-direction:column; gap:22px">
+            <BackLink Href="@(_entry is null ? "explore" : "library")" Text="@(_entry is null ? "Discover" : "My library")" />
+            <div class="rn-book-hero">
+                <div class="rn-book-hero-aside">
+                    <BookCover Title="@_book.Title" Author="@First(_book.Authors)" Url="@_book.CoverUrl" Isbn="@_book.Isbn13" Size="lg" Shadow="lg" Class="fill" Decorative="false" />
+                    @if (_entry is { Shelves.Count: > 0 })
                     {
-                        var author = _book.Authors[i];
-                        <a href="@("explore?field=Author&q=" + Uri.EscapeDataString(author))">@author</a>@(i < _book.Authors.Count - 1 ? ", " : "")
-                    }
-                }
-            </p>
-
-            <div class="rn-flex rn-flex-wrap mb-3">
-                @if (_entry is not null)
-                {
-                    <StatusBadge Status="_entry.Status" />
-                    <Stars Value="_entry.Rating" />
-                    @if (_entry.IsFavorite)
-                    {
-                        <span class="rn-chip"><Icon Name="heart" /> Favourite</span>
-                    }
-                }
-                @if (_book.Origin == BookOrigin.Manual)
-                {
-                    <span class="rn-chip" title="Only you can see this record"><Icon Name="lock" /> Private book record</span>
-                }
-            </div>
-
-            @if (_book.Genres.Count > 0)
-            {
-                <div class="rn-chips mb-3">
-                    @foreach (var genre in _book.Genres)
-                    {
-                        <a class="rn-chip" href="@("explore?field=Subject&q=" + Uri.EscapeDataString(genre))">@genre</a>
+                        <div style="display:flex; flex-direction:column; gap:8px">
+                            <span style="font-size:14px; font-weight:700">On your shelves</span>
+                            <div class="rn-chips" style="gap:6px">
+                                @foreach (var shelf in _entry.Shelves)
+                                {
+                                    <a class="rn-chip" href="@("shelves/" + shelf.Id)">@shelf.Name</a>
+                                }
+                            </div>
+                        </div>
                     }
                 </div>
-            }
-
-            @if (_userId is null)
-            {
-                <a class="rn-btn rn-btn-primary" href="@("Account/Login?returnUrl=" + Uri.EscapeDataString("books/" + BookId))">Log in to add this book</a>
-            }
-            else if (_entry is null)
-            {
-                <div class="rn-card tight rn-flex rn-flex-wrap">
-                    <label class="rn-label" for="add-status">Add to my library as</label>
-                    <select id="add-status" class="rn-select" style="width:auto" @bind="_addStatus">
-                        @foreach (var status in Enum.GetValues<ReadingStatus>())
+                <div class="rn-book-hero-main">
+                    @if (_book.Genres.Count > 0)
+                    {
+                        <div class="rn-chips" style="gap:6px">
+                            @foreach (var genre in _book.Genres)
+                            {
+                                <a class="rn-tag" href="@("explore?field=Subject&q=" + Uri.EscapeDataString(genre))">@genre</a>
+                            }
+                        </div>
+                    }
+                    <h1 tabindex="-1">@_book.Title</h1>
+                    @if (_book.Subtitle is not null)
+                    {
+                        <div class="rn-subtitle">@_book.Subtitle</div>
+                    }
+                    <div class="rn-byline">
+                        @if (_book.Authors.Count == 0)
                         {
-                            <option value="@status">@status.ToDisplayName()</option>
+                            <span>Author unknown</span>
                         }
-                    </select>
-                    <button type="button" class="rn-btn rn-btn-primary" disabled="@IsBusy" @onclick="AddAsync"><Icon Name="plus" /> Add to library</button>
+                        else
+                        {
+                            <span>by </span>
+                            @for (var i = 0; i < _book.Authors.Count; i++)
+                            {
+                                var author = _book.Authors[i];
+                                <a style="font-weight:700; color:inherit" href="@("explore?field=Author&q=" + Uri.EscapeDataString(author))">@author</a>@(i < _book.Authors.Count - 1 ? ", " : "")
+                            }
+                        }
+                    </div>
+                    <div class="rn-subtle" style="font-size:15px">@Meta</div>
+
+                    <div class="rn-status-panel">
+                        @if (_userId is null)
+                        {
+                            <p class="rn-mb-0" style="font-size:16px">Sign in to keep this book in your library, track your place and save notes.</p>
+                            <div class="rn-actions">
+                                <a class="rn-btn rn-btn-primary" href="@("Account/Login?returnUrl=" + Uri.EscapeDataString("books/" + BookId))">Sign in to add it</a>
+                            </div>
+                        }
+                        else if (_entry is null)
+                        {
+                            <p class="rn-mb-0" style="font-size:16px">Not in your library yet.</p>
+                            <div class="rn-actions">
+                                <button type="button" class="rn-btn rn-btn-primary" disabled="@IsBusy" @onclick="() => AddAsync(ReadingStatus.WantToRead)"><Icon Name="bookmark" />Want to read</button>
+                                <button type="button" class="rn-btn rn-btn-secondary" disabled="@IsBusy" @onclick="() => AddAsync(ReadingStatus.CurrentlyReading)"><Icon Name="book-open" />Start reading</button>
+                            </div>
+                        }
+                        else
+                        {
+                            @switch (_entry.Status)
+                            {
+                                case ReadingStatus.WantToRead:
+                                    <div class="rn-actions"><StatusBadge Status="_entry.Status" Large="true" /><span class="rn-subtle">Added @Formats.Long(_entry.AddedAtUtc)</span></div>
+                                    <div class="rn-actions"><button type="button" class="rn-btn rn-btn-primary" disabled="@IsBusy" @onclick="StartReadingAsync"><Icon Name="book-open" />Start reading</button></div>
+                                    break;
+                                case ReadingStatus.CurrentlyReading or ReadingStatus.Paused:
+                                    <div class="rn-progress-head">
+                                        <StatusBadge Status="_entry.Status" Large="true" />
+                                        @if (_entry.ProgressPercent is { } pct)
+                                        {
+                                            <span class="rn-big">@ProgressBar.Format(pct)</span>
+                                        }
+                                    </div>
+                                    <ProgressBar CurrentPage="_entry.CurrentPage" TotalPages="_entry.TotalPages" ShowLabel="false" />
+                                    <div style="font-size:15px">@ProgressBar.PageText(_entry.CurrentPage, _entry.TotalPages)</div>
+                                    <div class="rn-actions">
+                                        <button type="button" class="rn-btn rn-btn-primary" @onclick="() => _progressOpen = true"><Icon Name="bookmark" />Update progress</button>
+                                        <a class="rn-btn rn-btn-secondary" href="@("reading/" + _entry.Id)">Open reading view</a>
+                                    </div>
+                                    break;
+                                case ReadingStatus.Read:
+                                    <div class="rn-actions" style="gap:10px 14px">
+                                        <StatusBadge Status="_entry.Status" Large="true" />
+                                        <span style="font-size:15px">@(_entry.CompletedOn is { } done ? "Finished " + Formats.Long(done) : "Finish date not recorded")</span>
+                                        <Stars Value="_entry.Rating" />
+                                    </div>
+                                    <div class="rn-actions"><button type="button" class="rn-btn rn-btn-secondary" disabled="@IsBusy" @onclick="StartReadingAsync"><Icon Name="refresh" />Read it again</button></div>
+                                    break;
+                                case ReadingStatus.DidNotFinish:
+                                    <div class="rn-actions">
+                                        <StatusBadge Status="_entry.Status" Large="true" />
+                                        <span style="font-size:15px">Stopped at @ProgressBar.PageText(_entry.CurrentPage, _entry.TotalPages)</span>
+                                    </div>
+                                    <div class="rn-actions"><button type="button" class="rn-btn rn-btn-secondary" disabled="@IsBusy" @onclick="StartReadingAsync">Give it another go</button></div>
+                                    break;
+                            }
+                            <div class="rn-status-panel-foot">
+                                <label style="display:flex; align-items:center; gap:10px; font-size:14px; font-weight:600">
+                                    Status
+                                    <select class="rn-select" value="@_entry.Status" disabled="@IsBusy" @onchange="OnStatusSelectedAsync" @key="_statusKey">
+                                        @foreach (var status in Enum.GetValues<ReadingStatus>())
+                                        {
+                                            <option value="@status">@status.ToDisplayName()</option>
+                                        }
+                                        <option value="remove">Remove from library…</option>
+                                    </select>
+                                </label>
+                                <button type="button" class="rn-btn rn-btn-ghost" @onclick="() => _shelvesOpen = true"><Icon Name="layers" />Add to shelf</button>
+                                <button type="button" class="rn-btn rn-btn-ghost" @onclick="() => OpenNewNote(NoteType.General)"><Icon Name="pen-line" />Add a note</button>
+                                <button type="button" class="rn-btn rn-btn-ghost muted" aria-pressed="@(_entry.IsFavorite ? "true" : "false")" disabled="@IsBusy" @onclick="ToggleFavoriteAsync">
+                                    <Icon Name="heart" />@(_entry.IsFavorite ? "Favourite" : "Mark favourite")
+                                </button>
+                            </div>
+                        }
+                    </div>
+
+                    <section aria-labelledby="about-h" class="rn-section rn-measure" style="gap:10px; margin-top:22px">
+                        <h2 id="about-h" class="rn-mb-0">About this book</h2>
+                        @if (!string.IsNullOrWhiteSpace(_book.Description))
+                        {
+                            <p class="rn-description @(_expanded || _book.Description.Length < 900 ? null : "clamped")">@_book.Description</p>
+                            @if (_book.Description.Length >= 900)
+                            {
+                                <button type="button" class="rn-btn rn-btn-ghost" style="align-self:flex-start" aria-expanded="@(_expanded ? "true" : "false")" @onclick="() => _expanded = !_expanded">@(_expanded ? "Show less" : "Show more")</button>
+                            }
+                        }
+                        else
+                        {
+                            <p class="rn-subtle rn-mb-0">No description available for this edition.</p>
+                        }
+                    </section>
+                    <dl class="rn-facts" style="margin-top:12px">
+                        <div class="rn-fact"><dt>@(_book.Authors.Count > 1 ? "Authors" : "Author")</dt><dd>@(_book.Authors.Count > 0 ? string.Join(", ", _book.Authors) : "Not available")</dd></div>
+                        <div class="rn-fact"><dt>Publisher</dt><dd>@(_book.Publisher ?? "Not available")</dd></div>
+                        <div class="rn-fact"><dt>Published</dt><dd>@(_book.PublishedDate ?? "Not available")</dd></div>
+                        <div class="rn-fact">
+                            <dt>Pages</dt>
+                            <dd>
+                                @(PageCount?.ToString("N0") ?? "Not available")
+                                @if (_entry is not null)
+                                {
+                                    <button type="button" class="rn-link-button" style="margin-left:8px; font-size:14px" @onclick="() => _detailsOpen = true">Edit</button>
+                                }
+                            </dd>
+                        </div>
+                        <div class="rn-fact"><dt>Language</dt><dd>@(_book.LanguageCode?.ToUpperInvariant() ?? "Not available")</dd></div>
+                        <div class="rn-fact"><dt>ISBN</dt><dd class="rn-mono">@(_book.Isbn13 ?? _book.Isbn10 ?? (_book.Origin == BookOrigin.Manual ? "No ISBN (manually added)" : "Not available"))</dd></div>
+                        @if (_entry is not null)
+                        {
+                            <div class="rn-fact"><dt>Started</dt><dd>@(_entry.StartedOn is { } s ? Formats.Long(s) : "Not started")</dd></div>
+                            <div class="rn-fact"><dt>Your notes</dt><dd>@(string.IsNullOrWhiteSpace(_entry.PrivateNotes) ? "None" : "Saved privately") <button type="button" class="rn-link-button" style="margin-left:8px; font-size:14px" @onclick="() => _detailsOpen = true">Edit details</button></dd></div>
+                        }
+                        @if (_book.ExternalLinks.Count > 0)
+                        {
+                            <div class="rn-fact">
+                                <dt>Source</dt>
+                                <dd>
+                                    @foreach (var link in _book.ExternalLinks)
+                                    {
+                                        <a style="margin-right:10px" href="@link.Url" target="_blank" rel="noopener noreferrer nofollow">@link.Provider.ToDisplayName() <Icon Name="external" Size="14" /></a>
+                                    }
+                                </dd>
+                            </div>
+                        }
+                        @if (_book.Origin == BookOrigin.Manual)
+                        {
+                            <div class="rn-fact"><dt>Record</dt><dd><Icon Name="lock" Size="14" /> Private to you</dd></div>
+                        }
+                    </dl>
+                    @if (!string.IsNullOrWhiteSpace(_entry?.PrivateNotes))
+                    {
+                        <div class="rn-card paper tight rn-measure" style="margin-top:8px">
+                            <span class="rn-kicker sage"><Icon Name="lock" />Private notes</span>
+                            <p class="rn-mb-0 pre-wrap">@_entry.PrivateNotes</p>
+                        </div>
+                    }
                 </div>
-            }
+            </div>
+        </div>
 
-            <dl class="rn-facts">
-                <div class="rn-fact"><dt>Published</dt><dd>@(_book.PublishedDate ?? "Unknown")</dd></div>
-                <div class="rn-fact"><dt>Publisher</dt><dd>@(_book.Publisher ?? "Unknown")</dd></div>
-                <div class="rn-fact"><dt>Pages</dt><dd>@(_book.PageCount?.ToString("N0") ?? "Unknown")</dd></div>
-                <div class="rn-fact"><dt>Language</dt><dd>@(_book.LanguageCode?.ToUpperInvariant() ?? "Unknown")</dd></div>
-                <div class="rn-fact"><dt>ISBN-13</dt><dd class="rn-mono">@(_book.Isbn13 ?? "—")</dd></div>
-                <div class="rn-fact"><dt>ISBN-10</dt><dd class="rn-mono">@(_book.Isbn10 ?? "—")</dd></div>
-            </dl>
-
-            @if (!string.IsNullOrWhiteSpace(_book.Description))
+        <section aria-labelledby="rev-h" class="rn-section" style="max-width:760px">
+            <h2 id="rev-h" class="rn-mb-0">Your rating and review</h2>
+            @if (_entry is null)
             {
-                <div class="rn-description pre-wrap @(_expanded || _book.Description.Length < 700 ? null : "clamped")">@_book.Description</div>
-                @if (_book.Description.Length >= 700)
-                {
-                    <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm mt-1" aria-expanded="@(_expanded ? "true" : "false")" @onclick="() => _expanded = !_expanded">
-                        @(_expanded ? "Show less" : "Show more")
-                    </button>
-                }
+                <p class="rn-mb-0" style="font-size:16px; color:var(--color-neutral-700)">Add this book to your library to rate it and keep a review. Reviews are private unless you publish them.</p>
             }
             else
             {
-                <p class="rn-subtle">No description is available for this book.</p>
-            }
-
-            @if (_book.ExternalLinks.Count > 0)
-            {
-                <p class="mt-3 rn-subtle">
-                    Source:
-                    @foreach (var link in _book.ExternalLinks)
+                <StarInput Value="_entry.Rating" ValueChanged="SaveRatingAsync" Disabled="IsBusy" />
+                <div class="rn-field">
+                    <label class="rn-label" for="rev-text">Review</label>
+                    <textarea id="rev-text" class="rn-textarea" maxlength="5000" style="min-height:140px; font-size:16px; padding:14px 18px"
+                              placeholder="What did you make of it? Only you can see this unless you publish it." @bind="_reviewText" @bind:event="oninput"></textarea>
+                    <span class="rn-hint">@((_reviewText?.Length ?? 0).ToString("N0")) / 5,000</span>
+                </div>
+                @if (_reviewError is not null)
+                {
+                    <span class="rn-error-text" role="alert"><Icon Name="alert" />@_reviewError</span>
+                }
+                <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between">
+                    @if (Reviews.PublicReviewsEnabled)
                     {
-                        <a class="me-2" href="@link.Url" target="_blank" rel="noopener noreferrer nofollow">@link.Provider.ToDisplayName() <Icon Name="external" /></a>
+                        <div role="radiogroup" aria-label="Review visibility" style="display:flex; flex-wrap:wrap; gap:10px 22px">
+                            <label class="rn-radio"><input type="radio" name="rev-vis" checked="@(_visibility == ReviewVisibility.Private)" @onchange="() => _visibility = ReviewVisibility.Private" /><span class="dot"></span>Private</label>
+                            <label class="rn-radio"><input type="radio" name="rev-vis" checked="@(_visibility == ReviewVisibility.Public)" @onchange="() => _visibility = ReviewVisibility.Public" /><span class="dot"></span>Public on my profile</label>
+                        </div>
                     }
-                </p>
+                    <div class="rn-actions">
+                        @if (_entry.Review is not null)
+                        {
+                            <button type="button" class="rn-btn rn-btn-ghost" disabled="@IsBusy" @onclick="DeleteReviewAsync"><Icon Name="trash" />Delete review</button>
+                        }
+                        <button type="button" class="rn-btn rn-btn-primary" disabled="@IsBusy" @onclick="SaveReviewAsync">Save review</button>
+                    </div>
+                </div>
+                @if (_entry.ReviewUpdatedAtUtc is { } updated)
+                {
+                    <p class="rn-hint rn-mb-0">Last saved @Formats.Long(updated) · @(_entry.ReviewVisibility == ReviewVisibility.Public ? "public" : "private")</p>
+                }
             }
-        </div>
-    </section>
+        </section>
+
+        @if (_entry is not null && _notes is { Items.Count: > 0 })
+        {
+            <section aria-labelledby="bnotes-h" class="rn-section">
+                <div class="rn-section-header">
+                    <h2 id="bnotes-h">Your notes from this book</h2>
+                    <button type="button" class="rn-btn rn-btn-ghost" @onclick="() => OpenNewNote(NoteType.General)"><Icon Name="plus" />Add a note</button>
+                </div>
+                <div class="rn-grid" style="grid-template-columns:repeat(auto-fill, minmax(min(100%, 320px), 1fr)); align-items:start">
+                    @foreach (var note in _notes.Items)
+                    {
+                        <NoteCard Note="note" ShowBook="false" OnEdit="() => OpenEditNote(note)" @key="note.Id" />
+                    }
+                </div>
+                @if (_notes.TotalCount > _notes.Items.Count)
+                {
+                    <a href="@("notes?entry=" + _entry.Id)">All @_notes.TotalCount notes from this book</a>
+                }
+            </section>
+        }
+
+        @if (_entry is not null && _userId is { } owner)
+        {
+            <section class="rn-section" aria-labelledby="copy-h" style="max-width:760px">
+                <h2 id="copy-h" class="rn-mb-0">Your copy</h2>
+                <OwnershipPanel UserId="owner" Entry="_entry" OnChanged="ReloadEntryAsync" />
+            </section>
+        }
+
+        @if (_reviews is { Items.Count: > 0 })
+        {
+            <section class="rn-section" aria-labelledby="pubrev-h" style="max-width:820px; gap:8px">
+                <h2 id="pubrev-h" style="margin:0 0 8px">What other readers said</h2>
+                @foreach (var review in _reviews.Items)
+                {
+                    <article class="rn-review" style="padding:20px 0">
+                        <div>
+                            <div class="rn-review-meta">
+                                <Avatar Name="@review.ReviewerName" />
+                                @if (review.ReviewerHandle is not null)
+                                {
+                                    <a href="@("u/" + review.ReviewerHandle)" style="font-weight:700; color:var(--color-text)">@review.ReviewerName</a>
+                                }
+                                else
+                                {
+                                    <strong style="color:var(--color-text)">@review.ReviewerName</strong>
+                                }
+                                <span>· @Formats.Long(review.UpdatedAtUtc)</span>
+                            </div>
+                            <Stars Value="review.Rating" />
+                            <p>@review.Review</p>
+                        </div>
+                    </article>
+                }
+                <Pager Page="_reviews.Page" TotalPages="_reviews.TotalPages" TotalCount="_reviews.TotalCount" ItemName="reviews" OnPageChanged="LoadReviewsAsync" />
+            </section>
+        }
+
+        @if (_related.Count > 0)
+        {
+            <section class="rn-section" aria-labelledby="rel-h" style="gap:18px">
+                <h2 id="rel-h" class="rn-mb-0">If this one stays with you</h2>
+                <div class="rn-book-grid compact" role="list">
+                    @foreach (var related in _related)
+                    {
+                        <article class="rn-book-card" role="listitem" style="grid-row:span 4" @key="related.Id">
+                            <a class="rn-cover-button" href="@("books/" + related.Id)" tabindex="-1" aria-hidden="true">
+                                <BookCover Title="@related.Title" Author="@First(related.Authors)" Url="@related.CoverUrl" />
+                            </a>
+                            <h3 class="rn-book-title" title="@related.Title"><a href="@("books/" + related.Id)">@related.Title</a></h3>
+                            <p class="rn-book-author">@Authors(related.Authors)</p>
+                            <div class="rn-book-foot"></div>
+                        </article>
+                    }
+                </div>
+            </section>
+        }
+    </div>
 
     @if (_entry is not null && _userId is { } userId)
     {
-        <div class="rn-split rn-section">
-            <div>
-                <ReadingPanel UserId="userId" Entry="_entry" OnChanged="ReloadEntryAsync" OnRemoved="OnRemovedAsync" />
-                <SessionsPanel UserId="userId" Entry="_entry" OnChanged="ReloadEntryAsync" />
-                <NotesPanel UserId="userId" Entry="_entry" OnChanged="ReloadEntryAsync" />
-            </div>
-            <div>
-                <ReviewPanel UserId="userId" Entry="_entry" OnChanged="ReloadEntryAsync" />
-                <ShelvesPanel UserId="userId" Entry="_entry" OnChanged="ReloadEntryAsync" />
-                <OwnershipPanel UserId="userId" Entry="_entry" OnChanged="ReloadEntryAsync" />
-            </div>
-        </div>
+        <ProgressDialog @bind-Open="_progressOpen" UserId="userId" EntryId="_entry.Id" Title="@_entry.Title" Author="@Authors(_entry.Authors)" CoverUrl="@_entry.CoverUrl" Isbn="@_entry.Isbn13"
+                        CurrentPage="_entry.CurrentPage" TotalPages="_entry.TotalPages" OnSaved="ReloadEntryAsync" OnFinishRequested="() => _finishOpen = true" />
+        <FinishDialog @bind-Open="_finishOpen" UserId="userId" EntryId="_entry.Id" Title="@_entry.Title" Author="@Authors(_entry.Authors)" CoverUrl="@_entry.CoverUrl" Isbn="@_entry.Isbn13"
+                      CurrentStatus="_entry.Status" CurrentRating="_entry.Rating" OnSaved="ReloadEntryAsync" />
+        <ShelfPickDialog @bind-Open="_shelvesOpen" UserId="userId" EntryIds="new[] { _entry.Id }" BookTitle="@_entry.Title" OnSaved="ReloadEntryAsync" />
+        <NoteDialog @bind-Open="_noteOpen" UserId="userId" EntryId="_entry.Id" Note="_editingNote" InitialType="_newNoteType" SuggestedPage="@(_entry.CurrentPage > 0 ? _entry.CurrentPage : null)" OnSaved="ReloadNotesAsync" />
+        <EntryDetailsDialog @bind-Open="_detailsOpen" UserId="userId" Entry="_entry" OnSaved="ReloadEntryAsync" />
     }
-
-    @if (_reviews is { Items.Count: > 0 })
-    {
-        <section class="rn-section">
-            <div class="rn-section-header"><h2>Reader reviews</h2></div>
-            <div class="rn-stack">
-                @foreach (var review in _reviews.Items)
-                {
-                    <article class="rn-card tight">
-                        <div class="rn-flex rn-flex-wrap mb-2">
-                            <Avatar Name="@review.ReviewerName" />
-                            @if (review.ReviewerHandle is not null)
-                            {
-                                <a href="@("u/" + review.ReviewerHandle)"><strong>@review.ReviewerName</strong></a>
-                            }
-                            else
-                            {
-                                <strong>@review.ReviewerName</strong>
-                            }
-                            <Stars Value="review.Rating" />
-                            <span class="rn-subtle ms-auto">@review.UpdatedAtUtc.ToString("d MMM yyyy")</span>
-                        </div>
-                        <div class="pre-wrap">@review.Review</div>
-                    </article>
-                }
-            </div>
-            <Pager Page="_reviews.Page" TotalPages="_reviews.TotalPages" TotalCount="_reviews.TotalCount" ItemName="reviews" OnPageChanged="LoadReviewsAsync" />
-        </section>
-    }
-
-    @if (_related.Count > 0)
-    {
-        <section class="rn-section">
-            <div class="rn-section-header"><h2>Related books</h2><span class="rn-subtle">Same author or genre</span></div>
-            <div class="rn-book-grid">
-                @foreach (var related in _related)
-                {
-                    <article class="rn-book-card">
-                        <a class="rn-book-card-link" href="@("books/" + related.Id)">
-                            <BookCover Title="@related.Title" Author="@(related.Authors.Count > 0 ? related.Authors[0] : null)" Url="@related.CoverUrl" Size="fill" />
-                            <span class="rn-book-title">@related.Title</span>
-                        </a>
-                        <span class="rn-book-author">@string.Join(", ", related.Authors)</span>
-                    </article>
-                }
-            </div>
-        </section>
-    }
+    <ConfirmDialog @ref="_confirm" />
 }
 
 @code {
@@ -212,10 +357,44 @@ else if (_book is not null)
     private LibraryEntryDetailsDto? _entry;
     private IReadOnlyList<BookSummaryDto> _related = [];
     private PagedResult<PublicReviewDto>? _reviews;
+    private PagedResult<NoteDto>? _notes;
     private bool _loading = true;
     private bool _expanded;
     private string? _error;
-    private ReadingStatus _addStatus = ReadingStatus.WantToRead;
+    private string? _reviewText;
+    private string? _reviewError;
+    private ReviewVisibility _visibility;
+    private bool _progressOpen;
+    private bool _finishOpen;
+    private bool _shelvesOpen;
+    private bool _noteOpen;
+    private bool _detailsOpen;
+    private NoteDto? _editingNote;
+    private NoteType _newNoteType;
+    private int _statusKey;
+    private ConfirmDialog _confirm = default!;
+
+    private int? PageCount => _entry?.TotalPages ?? _book?.PageCount;
+
+    private string Meta
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (_book!.Publisher is { } publisher)
+            {
+                parts.Add(publisher);
+            }
+
+            if (_book.PublishedDate is { Length: >= 4 } date)
+            {
+                parts.Add(date[..4]);
+            }
+
+            parts.Add(PageCount is { } pages ? Formats.Count(pages, "page") : "Page count not available");
+            return string.Join(" · ", parts);
+        }
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -230,25 +409,55 @@ else if (_book is not null)
         {
             _book = await Books.GetBookAsync(BookId, _userId, ComponentToken);
             _entry = _userId is { } userId ? await Library.FindEntryForBookAsync(userId, BookId, ComponentToken) : null;
-            _related = await Books.GetRelatedBooksAsync(BookId, _userId, 8, ComponentToken);
+            SyncReviewForm();
+            _related = await Books.GetRelatedBooksAsync(BookId, _userId, 6, ComponentToken);
             _reviews = await Reviews.GetPublicReviewsForBookAsync(BookId, 1, 5, ComponentToken);
+            await LoadNotesAsync();
         });
         _loading = false;
     }
 
+    private void SyncReviewForm()
+    {
+        _reviewText = _entry?.Review;
+        _visibility = _entry?.ReviewVisibility ?? ReviewVisibility.Private;
+        _reviewError = null;
+    }
+
+    private async Task LoadNotesAsync()
+    {
+        _notes = _userId is { } userId && _entry is not null
+            ? await Notes.SearchAsync(userId, new NoteQuery(EntryId: _entry.Id, PageSize: 12), ComponentToken)
+            : null;
+    }
+
     private async Task ReloadEntryAsync()
     {
-        if (_userId is { } userId)
+        if (_userId is not { } userId)
         {
-            var error = await LoadAsync(async () =>
-            {
-                _entry = await Library.FindEntryForBookAsync(userId, BookId, ComponentToken);
-                _reviews = await Reviews.GetPublicReviewsForBookAsync(BookId, 1, 5, ComponentToken);
-            });
-            if (error is not null)
-            {
-                Toasts.Error(error);
-            }
+            return;
+        }
+
+        var error = await LoadAsync(async () =>
+        {
+            _entry = await Library.FindEntryForBookAsync(userId, BookId, ComponentToken);
+            _reviews = await Reviews.GetPublicReviewsForBookAsync(BookId, 1, 5, ComponentToken);
+        });
+        if (error is not null)
+        {
+            Toasts.Error(error);
+        }
+
+        _statusKey++;
+        StateHasChanged();
+    }
+
+    private async Task ReloadNotesAsync()
+    {
+        var error = await LoadAsync(LoadNotesAsync);
+        if (error is not null)
+        {
+            Toasts.Error(error);
         }
     }
 
@@ -261,23 +470,209 @@ else if (_book is not null)
         }
     }
 
-    private async Task AddAsync()
+    private async Task AddAsync(ReadingStatus status)
     {
         if (_userId is not { } userId)
         {
             return;
         }
 
-        if (await RunAsync(() => Library.AddBookAsync(userId, new AddToLibraryRequest(BookId, _addStatus), ComponentToken), "Added to your library."))
+        AddEntryResult? result = null;
+        var ok = await RunAsync(
+            async () => result = await Library.AddBookAsync(userId, new AddToLibraryRequest(BookId, status), ComponentToken),
+            status == ReadingStatus.WantToRead ? "Added to Want to read." : "Started. Happy reading.",
+            undo: async () =>
+            {
+                if (result is { AlreadyInLibrary: false })
+                {
+                    await Library.RemoveAsync(userId, result.EntryId, CancellationToken.None);
+                    await ReloadEntryAsync();
+                }
+            });
+        if (ok)
+        {
+            await ReloadEntryAsync();
+            SyncReviewForm();
+        }
+    }
+
+    private async Task StartReadingAsync()
+    {
+        if (_entry is null || _userId is not { } userId)
+        {
+            return;
+        }
+
+        var entryId = _entry.Id;
+        if (await RunAsync(
+                () => Library.UpdateStatusAsync(userId, entryId, new UpdateStatusRequest(ReadingStatus.CurrentlyReading), ComponentToken),
+                "Moved to Reading. Enjoy it."))
         {
             await ReloadEntryAsync();
         }
     }
 
-    private Task OnRemovedAsync()
+    private async Task OnStatusSelectedAsync(ChangeEventArgs e)
     {
-        _entry = null;
-        Navigation.NavigateTo("library");
-        return Task.CompletedTask;
+        if (_entry is null || _userId is not { } userId)
+        {
+            return;
+        }
+
+        var value = e.Value?.ToString();
+        if (value == "remove")
+        {
+            _statusKey++;
+            await RemoveAsync();
+            return;
+        }
+
+        if (!Enum.TryParse<ReadingStatus>(value, out var status) || status == _entry.Status)
+        {
+            return;
+        }
+
+        if (status == ReadingStatus.Read)
+        {
+            _statusKey++;
+            _finishOpen = true;
+            return;
+        }
+
+        var entryId = _entry.Id;
+        var previous = _entry.Status;
+        if (await RunAsync(
+                () => Library.UpdateStatusAsync(userId, entryId, new UpdateStatusRequest(status), ComponentToken),
+                "Moved to " + StatusBadge.LabelFor(status) + ".",
+                undo: previous == ReadingStatus.Read ? null : async () =>
+                {
+                    await Library.UpdateStatusAsync(userId, entryId, new UpdateStatusRequest(previous), CancellationToken.None);
+                    await ReloadEntryAsync();
+                }))
+        {
+            await ReloadEntryAsync();
+        }
     }
+
+    private async Task ToggleFavoriteAsync()
+    {
+        if (_entry is null || _userId is not { } userId)
+        {
+            return;
+        }
+
+        var target = !_entry.IsFavorite;
+        if (await RunAsync(() => Library.SetFavoriteAsync(userId, _entry.Id, target, ComponentToken), target ? "Added to favourites." : "Removed from favourites."))
+        {
+            await ReloadEntryAsync();
+        }
+    }
+
+    private async Task RemoveAsync()
+    {
+        if (_entry is null || _userId is not { } userId)
+        {
+            return;
+        }
+
+        RemovalImpactDto? impact = null;
+        if (!await RunAsync(async () => impact = await Library.GetRemovalImpactAsync(userId, _entry.Id, ComponentToken)) || impact is null)
+        {
+            return;
+        }
+
+        if (impact.HasOutstandingLoan)
+        {
+            Toasts.Error("This book is lent out right now. Mark the loan as returned before removing it.");
+            return;
+        }
+
+        var details = new List<string>();
+        if (impact.Sessions > 0) details.Add(Formats.Count(impact.Sessions, "reading session"));
+        if (impact.Notes > 0) details.Add(Formats.Count(impact.Notes, "note"));
+        if (impact.HasReview) details.Add("your review");
+        if (impact.Loans > 0) details.Add(Formats.Count(impact.Loans, "past loan record"));
+        if (impact.Shelves > 0) details.Add("its place on " + Formats.Count(impact.Shelves, "shelf", "shelves"));
+
+        var message = details.Count == 0
+            ? $"“{_entry.Title}” will be removed from your library."
+            : $"“{_entry.Title}” will be removed from your library, together with:";
+        if (await _confirm.ConfirmAsync("Remove this book?", message, "Remove book", danger: true, details: details.Count == 0 ? null : details)
+            && await RunAsync(() => Library.RemoveAsync(userId, _entry.Id, ComponentToken), "Removed from your library."))
+        {
+            Navigation.NavigateTo("library");
+        }
+    }
+
+    private async Task SaveRatingAsync(int? rating)
+    {
+        if (_entry is null || _userId is not { } userId)
+        {
+            return;
+        }
+
+        if (await RunAsync(() => Reviews.SetRatingAsync(userId, _entry.Id, rating, ComponentToken), rating is null ? "Rating cleared." : "Rating saved."))
+        {
+            var text = _reviewText;
+            var visibility = _visibility;
+            await ReloadEntryAsync();
+            _reviewText = text;
+            _visibility = visibility;
+        }
+    }
+
+    private async Task SaveReviewAsync()
+    {
+        if (_entry is null || _userId is not { } userId)
+        {
+            return;
+        }
+
+        _reviewError = null;
+        if (_visibility == ReviewVisibility.Public && string.IsNullOrWhiteSpace(_reviewText))
+        {
+            _reviewError = "Write a few words before publishing a review.";
+            return;
+        }
+
+        var request = new ReviewRequest(_entry.Rating, _reviewText, _visibility);
+        if (await RunAsync(() => Reviews.SaveReviewAsync(userId, _entry.Id, request, ComponentToken),
+                _visibility == ReviewVisibility.Public ? "Review published on your profile." : "Review saved privately."))
+        {
+            await ReloadEntryAsync();
+            SyncReviewForm();
+        }
+    }
+
+    private async Task DeleteReviewAsync()
+    {
+        if (_entry is null || _userId is not { } userId)
+        {
+            return;
+        }
+
+        if (await _confirm.ConfirmAsync("Delete your review?", "Your written review will be deleted. Your star rating is kept.", "Delete review")
+            && await RunAsync(() => Reviews.DeleteReviewAsync(userId, _entry.Id, ComponentToken), "Review deleted."))
+        {
+            await ReloadEntryAsync();
+            SyncReviewForm();
+        }
+    }
+
+    private void OpenNewNote(NoteType type)
+    {
+        _editingNote = null;
+        _newNoteType = type;
+        _noteOpen = true;
+    }
+
+    private void OpenEditNote(NoteDto note)
+    {
+        _editingNote = note;
+        _noteOpen = true;
+    }
+
+    private static string? First(IReadOnlyList<string> authors) => authors.Count > 0 ? authors[0] : null;
+
+    private static string Authors(IReadOnlyList<string> authors) => authors.Count > 0 ? string.Join(", ", authors) : "Unknown author";
 }

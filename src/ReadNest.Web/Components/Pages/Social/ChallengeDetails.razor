@@ -6,6 +6,8 @@
 
 <AppTitle Text="@(_data?.Challenge.Title ?? "Challenge")" />
 
+
+<div class="rn-page tight">
 @if (_error is not null)
 {
     <EmptyState Title="Challenge not available" IconName="trophy" Text="This challenge doesn't exist, or it is private.">
@@ -82,6 +84,7 @@ else
 }
 
 <ConfirmDialog @ref="_confirm" />
+</div>
 
 @code {
     [Parameter] public Guid ChallengeId { get; set; }

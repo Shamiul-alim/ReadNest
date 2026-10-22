@@ -57,11 +57,11 @@ public static class EnumDisplayExtensions
 {
     public static string ToDisplayName(this ReadingStatus status) => status switch
     {
-        ReadingStatus.WantToRead => "Want to Read",
-        ReadingStatus.CurrentlyReading => "Currently Reading",
+        ReadingStatus.WantToRead => "Want to read",
+        ReadingStatus.CurrentlyReading => "Currently reading",
         ReadingStatus.Read => "Read",
         ReadingStatus.Paused => "Paused",
-        ReadingStatus.DidNotFinish => "Did Not Finish",
+        ReadingStatus.DidNotFinish => "Did not finish",
         _ => status.ToString(),
     };
 

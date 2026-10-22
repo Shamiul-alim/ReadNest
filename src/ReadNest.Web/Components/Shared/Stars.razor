@@ -3,7 +3,7 @@
     <span class="rn-stars" role="img" aria-label="@("Rated " + value + " out of 5")">
         @for (var i = 1; i <= 5; i++)
         {
-            <span class="@(i <= value ? "on" : "off")"><Icon Name="star" /></span>
+            <span class="@(i <= value ? "on" : "off")"><Icon Name="star-filled" Size="@IconSize" /></span>
         }
     </span>
 }
@@ -15,4 +15,5 @@ else if (ShowEmpty)
 @code {
     [Parameter] public int? Value { get; set; }
     [Parameter] public bool ShowEmpty { get; set; }
+    [Parameter] public int? IconSize { get; set; }
 }

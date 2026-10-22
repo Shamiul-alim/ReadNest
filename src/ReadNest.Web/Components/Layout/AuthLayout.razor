@@ -2,30 +2,31 @@
 
 <a class="rn-skip-link visually-hidden-focusable" href="#main-content">Skip to main content</a>
 <div class="rn-auth">
-    <aside class="rn-auth-aside">
-        <a class="rn-brand" href="">
-            <span class="rn-brand-mark"><Icon Name="book" /></span>
-            <span class="rn-brand-name">ReadNest</span>
+    <div class="rn-auth-main">
+        <a class="rn-brand" href="" aria-label="ReadNest home">
+            <Logo />
+            <span class="rn-brand-name" style="font-size:22px">ReadNest</span>
         </a>
-        <div>
-            <h2>Your reading life, organised.</h2>
-            <p>Track what you read, keep the ideas worth remembering, and build a habit that lasts.</p>
+        <main class="rn-auth-center" id="main-content" tabindex="-1">
+            <div class="rn-auth-card">
+                @Body
+            </div>
+        </main>
+    </div>
+    @* Decorative panel, desktop only. *@
+    <div class="rn-auth-aside" aria-hidden="true">
+        <div class="blob"></div>
+        <div class="c1"><BookCover Title="Piranesi" Author="Susanna Clarke" Isbn="9781635575637" Shadow="lg" /></div>
+        <div class="c2"><BookCover Title="Middlemarch" Author="George Eliot" Isbn="9780141439549" Shadow="lg" /></div>
+        <div class="copy">
+            <span>Page 164 of 272. Right where you left it.</span>
+            <span>Your place, your notes and your shelves, waiting.</span>
         </div>
-        <p class="rn-mb-0" style="opacity:.8">“A reader lives a thousand lives before he dies.” — George R. R. Martin</p>
-    </aside>
-    <main class="rn-auth-main" id="main-content">
-        <div class="rn-auth-card">
-            <a class="rn-brand d-lg-none ps-0" href="">
-                <span class="rn-brand-mark"><Icon Name="book" /></span>
-                <span class="rn-brand-name">ReadNest</span>
-            </a>
-            @Body
-        </div>
-    </main>
+    </div>
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>
-    An unexpected error has occurred.
+    Something went wrong.
     <a href="." class="reload">Reload</a>
     <span class="dismiss" role="button" aria-label="Dismiss">✕</span>
 </div>

@@ -115,7 +115,7 @@ public static class LibraryCsvFormat
 
         if (!TryParseStatus(Get("Status"), out var status))
         {
-            errors.Add($"Unknown status '{Truncate(Get("Status"))}'. Use Want to Read, Currently Reading, Read, Paused or Did Not Finish.");
+            errors.Add($"Unknown status '{Truncate(Get("Status"))}'. Use Want to read, Currently reading, Read, Paused or Did not finish.");
         }
 
         var currentPage = ParseInt(Get("CurrentPage"), "CurrentPage", 0, Book.MaxPageCount, errors);

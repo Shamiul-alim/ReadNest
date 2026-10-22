@@ -1,0 +1,15 @@
+<span class="rn-notetype rn-notetype-@Type @(Large ? "lg" : null)"><Icon Name="@IconFor(Type)" />@Type.ToDisplayName()</span>
+
+@code {
+    [Parameter, EditorRequired] public NoteType Type { get; set; }
+    [Parameter] public bool Large { get; set; }
+
+    public static string IconFor(NoteType type) => type switch
+    {
+        NoteType.Quote => "quote",
+        NoteType.Takeaway => "lightbulb",
+        NoteType.Lesson => "sprout",
+        NoteType.ActionItem => "square-check",
+        _ => "pen-line",
+    };
+}

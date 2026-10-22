@@ -6,58 +6,6 @@ namespace ReadNest.Web.Components.Forms;
 // Form models give immediate feedback in the browser. They are a convenience only: every rule is enforced
 // again by the application services and domain entities, which are the security boundary.
 
-public sealed class SessionFormModel : IValidatableObject
-{
-    [Required(ErrorMessage = "Choose the date you read.")]
-    public DateOnly? ReadOn { get; set; }
-
-    [Range(0, 100_000, ErrorMessage = "Start page must be between 0 and 100,000.")]
-    public int StartPage { get; set; }
-
-    [Range(0, 100_000, ErrorMessage = "End page must be between 0 and 100,000.")]
-    public int EndPage { get; set; }
-
-    [Range(0, 1440, ErrorMessage = "Duration must be between 0 and 1,440 minutes.")]
-    public int DurationMinutes { get; set; }
-
-    [StringLength(2000)]
-    public string? Reflection { get; set; }
-
-    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
-    {
-        if (EndPage < StartPage)
-        {
-            yield return new ValidationResult("The ending page must be greater than or equal to the starting page.", [nameof(EndPage)]);
-        }
-    }
-}
-
-public sealed class NoteFormModel
-{
-    public NoteType Type { get; set; } = NoteType.General;
-
-    [Required(ErrorMessage = "Write something for your note.")]
-    [StringLength(5000)]
-    public string Content { get; set; } = "";
-
-    [Range(0, 100_000)]
-    public int? PageNumber { get; set; }
-
-    [StringLength(200)]
-    public string? Chapter { get; set; }
-}
-
-public sealed class ProgressFormModel
-{
-    [Range(0, 100_000, ErrorMessage = "Enter a page between 0 and 100,000.")]
-    public int CurrentPage { get; set; }
-
-    public bool RecordSession { get; set; } = true;
-
-    [Range(0, 1440, ErrorMessage = "Duration must be between 0 and 1,440 minutes.")]
-    public int? DurationMinutes { get; set; }
-}
-
 public sealed class EntryDetailsFormModel : IValidatableObject
 {
     [Range(1, 100_000, ErrorMessage = "Total pages must be between 1 and 100,000.")]
@@ -77,17 +25,6 @@ public sealed class EntryDetailsFormModel : IValidatableObject
             yield return new ValidationResult("The completion date cannot be before the start date.", [nameof(CompletedOn)]);
         }
     }
-}
-
-public sealed class ReviewFormModel
-{
-    [Range(1, 5)]
-    public int? Rating { get; set; }
-
-    [StringLength(5000, ErrorMessage = "Reviews can be at most 5,000 characters.")]
-    public string? Text { get; set; }
-
-    public ReviewVisibility Visibility { get; set; } = ReviewVisibility.Private;
 }
 
 public sealed class OwnershipFormModel
@@ -126,18 +63,6 @@ public sealed class LoanFormModel : IValidatableObject
             yield return new ValidationResult("The expected return date cannot be before the loan date.", [nameof(DueOn)]);
         }
     }
-}
-
-public sealed class ShelfFormModel
-{
-    [Required(ErrorMessage = "Give your shelf a name.")]
-    [StringLength(80)]
-    public string Name { get; set; } = "";
-
-    [StringLength(500)]
-    public string? Description { get; set; }
-
-    public bool IsPublic { get; set; }
 }
 
 public sealed class ManualBookFormModel
@@ -183,15 +108,6 @@ public sealed class ManualBookFormModel
         string.IsNullOrWhiteSpace(value)
             ? []
             : value.Split([',', ';'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-}
-
-public sealed class GoalFormModel
-{
-    [Range(1, 1000, ErrorMessage = "Choose a target between 1 and 1,000 books.")]
-    public int TargetBooks { get; set; } = 12;
-
-    [Range(1, 1_000_000, ErrorMessage = "Page target must be between 1 and 1,000,000.")]
-    public int? TargetPages { get; set; }
 }
 
 public sealed class ChallengeFormModel : IValidatableObject

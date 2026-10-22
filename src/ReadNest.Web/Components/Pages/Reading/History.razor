@@ -7,18 +7,14 @@
 
 <AppTitle Text="Reading history" />
 
-<PageHeader Title="Reading history" Description="Every reading session you've logged, grouped by day." />
 
-<form class="rn-card tight rn-toolbar" @onsubmit="Apply">
-    <div class="rn-field">
-        <label class="rn-label" for="hist-from">From</label>
-        <input id="hist-from" class="rn-input" type="date" @bind="_from" />
-    </div>
-    <div class="rn-field">
-        <label class="rn-label" for="hist-to">To</label>
-        <input id="hist-to" class="rn-input" type="date" @bind="_to" />
-    </div>
-    <button type="submit" class="rn-btn rn-btn-primary">Show</button>
+<div class="rn-page tight">
+<PageHeader Title="Reading history" Description="Every reading session you’ve logged, newest first. Updating your page records a session automatically." />
+
+<form class="rn-toolbar" @onsubmit="Apply" @onsubmit:preventDefault aria-label="Filter sessions by date">
+    <label class="rn-sort">From <input class="rn-input" style="width:auto; min-height:44px; font-size:15px" type="date" @bind="_from" /></label>
+    <label class="rn-sort">To <input class="rn-input" style="width:auto; min-height:44px; font-size:15px" type="date" @bind="_to" /></label>
+    <button type="submit" class="rn-btn rn-btn-secondary rn-btn-sm">Show</button>
     @if (From is not null || To is not null || Entry is not null)
     {
         <a class="rn-btn rn-btn-ghost" href="history">Show all</a>
@@ -27,51 +23,51 @@
 
 @if (_error is not null)
 {
-    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+    <ErrorAlert Message="@_error" Title="We couldn’t load your sessions" OnRetry="RefreshAsync" />
 }
 else if (_page is null)
 {
-    <LoadingIndicator />
+    <LoadingIndicator Kind="rows" />
 }
 else if (_page.TotalCount == 0)
 {
-    <EmptyState Title="No reading sessions yet" IconName="clock"
-                Text="Log a session from any book page — or update your current page and tick “record as today's session”.">
-        <a class="rn-btn rn-btn-primary" href="library/currently-reading">Go to Currently Reading</a>
+    <EmptyState Title="No reading sessions yet" IconName="clock" Variant="dashed"
+                Text="Update your page from the reading view and a session is recorded for you. Log one by hand to add time and a reflection.">
+        <a class="rn-btn rn-btn-primary" href="library/currently-reading">Books you’re reading</a>
     </EmptyState>
 }
 else
 {
-    <p class="rn-subtle">
-        @_page.TotalCount.ToString("N0") session@(_page.TotalCount == 1 ? "" : "s") ·
-        @_page.Items.Sum(s => s.PagesRead).ToString("N0") pages on this page
+    <p class="rn-mb-0" style="font-size:15px; color:var(--color-neutral-700)">
+        @Formats.Count(_page.TotalCount, "session") · @Formats.Count(_page.Items.Sum(s => s.PagesRead), "page") and @Formats.Duration(_page.Items.Sum(s => s.DurationMinutes)) on this page
     </p>
-    @foreach (var day in _page.Items.GroupBy(s => s.ReadOn))
-    {
-        <section class="rn-day" @key="day.Key">
-            <h2 class="rn-day-heading"><Icon Name="calendar" /> @day.Key.ToString("dddd, d MMMM yyyy") <span class="rn-chip">@day.Sum(s => s.PagesRead) pages</span></h2>
-            <div class="rn-card tight">
-                <div class="rn-list">
+    <div style="max-width:820px; display:flex; flex-direction:column; gap:22px">
+        @foreach (var day in _page.Items.GroupBy(s => s.ReadOn))
+        {
+            <section class="rn-day" @key="day.Key">
+                <h2 class="rn-day-heading" style="margin:0">@day.Key.ToString("dddd, MMMM d, yyyy", CultureInfo.CurrentCulture) · @Formats.Count(day.Sum(s => s.PagesRead), "page")</h2>
+                <ol class="rn-timeline">
                     @foreach (var session in day)
                     {
-                        <div class="rn-list-item" @key="session.Id">
-                            <BookCover Title="@session.BookTitle" Url="@session.CoverUrl" Size="xs" />
-                            <div class="rn-list-body">
-                                <a class="rn-list-title" href="@("books/" + session.BookId)">@session.BookTitle</a>
-                                <div class="rn-subtle">Pages @session.StartPage–@session.EndPage · @session.PagesRead pages@(session.DurationMinutes > 0 ? " · " + session.DurationMinutes + " min" : "")</div>
+                        <li @key="session.Id">
+                            <a class="rn-cover-button" style="width:40px; flex:none" href="@("books/" + session.BookId)" tabindex="-1" aria-hidden="true"><BookCover Title="@session.BookTitle" Url="@session.CoverUrl" /></a>
+                            <div>
+                                <div class="head"><a class="rn-list-title" style="font-size:16px" href="@("books/" + session.BookId)">@session.BookTitle</a><span>@Formats.Count(session.PagesRead, "page")</span></div>
+                                <div class="meta">p. @session.StartPage.ToString("N0")–@session.EndPage.ToString("N0")@(session.DurationMinutes > 0 ? " · " + Formats.Duration(session.DurationMinutes) : "")</div>
                                 @if (!string.IsNullOrWhiteSpace(session.Reflection))
                                 {
-                                    <div class="pre-wrap rn-muted mt-1">@session.Reflection</div>
+                                    <p class="pre-wrap">@session.Reflection</p>
                                 }
                             </div>
-                        </div>
+                        </li>
                     }
-                </div>
-            </div>
-        </section>
-    }
+                </ol>
+            </section>
+        }
+    </div>
     <Pager Page="_page.Page" TotalPages="_page.TotalPages" TotalCount="_page.TotalCount" ItemName="sessions" OnPageChanged="GoToPage" />
 }
+</div>
 
 @code {
     [SupplyParameterFromQuery(Name = "from")] public string? From { get; set; }

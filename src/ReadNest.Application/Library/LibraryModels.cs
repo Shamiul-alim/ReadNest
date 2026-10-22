@@ -58,7 +58,8 @@ public sealed record LibraryEntryDto(
     DateOnly? CompletedOn,
     DateOnly? LastReadOn,
     DateTime AddedAtUtc,
-    DateTime UpdatedAtUtc)
+    DateTime UpdatedAtUtc,
+    string? Isbn13 = null)
 {
     public decimal? ProgressPercent => Domain.Entities.UserBook.CalculateProgress(CurrentPage, TotalPages);
 }
@@ -93,7 +94,8 @@ public sealed record LibraryEntryDetailsDto(
     IReadOnlyList<ShelfRefDto> Shelves,
     int SessionCount,
     int NoteCount,
-    bool HasOutstandingLoan)
+    bool HasOutstandingLoan,
+    string? Isbn13 = null)
 {
     public decimal? ProgressPercent => Domain.Entities.UserBook.CalculateProgress(CurrentPage, TotalPages);
 }
@@ -126,6 +128,9 @@ public sealed record AddToLibraryRequest(Guid BookId, ReadingStatus Status = Rea
 public sealed record UpdateStatusRequest(ReadingStatus Status, DateOnly? CompletedOn = null);
 
 public sealed record UpdateProgressRequest(int CurrentPage, bool RecordSession = true, int? DurationMinutes = null);
+
+/// <summary>The outcome of a progress update, with what is needed to undo it.</summary>
+public sealed record ProgressUpdateResult(LibraryEntryDetailsDto Entry, int PreviousPage, ReadingStatus PreviousStatus, Guid? RecordedSessionId);
 
 public sealed record UpdateEntryDetailsRequest(int? TotalPages, DateOnly? StartedOn, DateOnly? CompletedOn, string? PrivateNotes);
 

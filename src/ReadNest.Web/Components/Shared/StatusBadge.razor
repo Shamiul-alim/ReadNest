@@ -1,5 +1,20 @@
-<span class="rn-status rn-status-@Status">@Status.ToDisplayName()</span>
+@* Reading status: colour + icon + label, never colour alone (Paused is also dashed). *@
+<span class="rn-status rn-status-@Status @(Large ? "lg" : null)"><Icon Name="@IconFor(Status)" /><span>@LabelFor(Status)</span></span>
 
 @code {
     [Parameter, EditorRequired] public ReadingStatus Status { get; set; }
+    [Parameter] public bool Large { get; set; }
+
+    /// <summary>The short label the design uses ("Reading" rather than "Currently reading").</summary>
+    public static string LabelFor(ReadingStatus status) => status == ReadingStatus.CurrentlyReading ? "Reading" : status.ToDisplayName();
+
+    public static string IconFor(ReadingStatus status) => status switch
+    {
+        ReadingStatus.WantToRead => "bookmark",
+        ReadingStatus.CurrentlyReading => "book-open",
+        ReadingStatus.Read => "check",
+        ReadingStatus.Paused => "pause",
+        ReadingStatus.DidNotFinish => "slash",
+        _ => "book",
+    };
 }

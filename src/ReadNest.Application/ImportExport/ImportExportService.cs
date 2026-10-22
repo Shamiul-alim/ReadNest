@@ -262,6 +262,13 @@ public sealed class ImportExportService(
             entry.SetTotalPages(row.TotalPages, now);
         }
 
+        // The bookmark is set without recording reading activity, so a Paused or Want to read row keeps its status
+        // and the import date never shows up as "last read".
+        if (row.CurrentPage is { } page && row.Status != ReadingStatus.Read)
+        {
+            entry.SetImportedPosition(page, now);
+        }
+
         if (row.Status != ReadingStatus.WantToRead)
         {
             entry.ChangeStatus(row.Status, today, row.Status == ReadingStatus.Read ? row.CompletedOn : null, now, defaultCompletionToToday: false);
@@ -270,12 +277,6 @@ public sealed class ImportExportService(
         if (row.StartedOn is not null)
         {
             entry.SetReadingDates(row.StartedOn, entry.CompletedOn, today, now);
-        }
-
-        if (row.CurrentPage is { } page && row.Status != ReadingStatus.Read)
-        {
-            entry.ValidatePage(page, "currentPage");
-            entry.UpdateProgress(page, today, now);
         }
 
         entry.SetRating(row.Rating, now);

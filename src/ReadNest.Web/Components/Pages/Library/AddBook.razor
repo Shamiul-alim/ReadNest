@@ -6,16 +6,25 @@
 @using ReadNest.Application.Library
 @inject LibraryService Library
 
-<AppTitle Text="Add a book manually" />
+<AppTitle Text="Add a book" />
 
-<PageHeader Title="Add a book manually" Description="For books that aren't in the online catalogues, or that you'd rather keep private. Manually entered books are visible only to you.">
-    <Breadcrumbs><a href="library">My Library</a> <Icon Name="chevron-right" /> <span>Add a book</span></Breadcrumbs>
-</PageHeader>
 
-<div class="rn-alert rn-alert-info mb-4">
-    <Icon Name="info" />
-    <div class="rn-alert-body">Tip: most published books can be found in <a href="explore">Explore</a>, which fills in covers, descriptions and page counts automatically.</div>
-</div>
+<div class="rn-page tight">
+<BackLink Href="library" Text="My library" />
+<PageHeader Title="Add a book" Description="Search the catalogue first: it fills in the cover, description and page count for you." />
+
+<form role="search" style="display:flex; flex-wrap:wrap; gap:10px; max-width:720px" @onsubmit="SearchCatalog" @onsubmit:preventDefault>
+    <div class="rn-input-icon" style="flex:1 1 280px">
+        <Icon Name="search" />
+        <input class="rn-input" type="search" maxlength="200" aria-label="Search the catalogue" placeholder="Title, author or ISBN" @bind="_catalogQuery" />
+    </div>
+    <button type="submit" class="rn-btn rn-btn-primary">Search the catalogue</button>
+</form>
+
+<section class="rn-section" aria-labelledby="by-hand-h" style="gap:12px">
+    <h2 id="by-hand-h" class="rn-mb-0">Can’t find it? Add it by hand</h2>
+    <p class="rn-mb-0" style="color:var(--color-neutral-700)">Only a title is required. Books you add by hand are visible only to you, and get a typographic cover unless you give an image link.</p>
+</section>
 
 <div class="rn-card" style="max-width:820px">
     <EditForm Model="_model" OnValidSubmit="SaveAsync" class="rn-form">
@@ -96,8 +105,19 @@
         </div>
     </EditForm>
 </div>
+</div>
 
 @code {
+    private string _catalogQuery = "";
+
+    private void SearchCatalog()
+    {
+        if (!string.IsNullOrWhiteSpace(_catalogQuery))
+        {
+            Navigation.NavigateTo("explore?q=" + Uri.EscapeDataString(_catalogQuery.Trim()));
+        }
+    }
+
     private readonly ManualBookFormModel _model = new();
 
     private async Task SaveAsync()

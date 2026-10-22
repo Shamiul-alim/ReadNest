@@ -102,9 +102,14 @@ public sealed class BookService(IReadNestDbContextFactory dbFactory, CatalogServ
             return [];
         }
 
+        // Other records of the same book (same ISBN, or the same title by a shared author) are not "related".
+        var self = await db.Books.Where(b => b.Id == bookId).Select(b => new { b.Isbn13, b.NormalizedTitle }).FirstAsync(cancellationToken);
+        var authorNames = await db.BookAuthors.Where(a => a.BookId == bookId).Select(a => a.Author.NormalizedName).ToListAsync(cancellationToken);
         return await VisibleBooks(db, viewerId)
             .AsNoTracking()
             .Where(b => b.Id != bookId && b.Origin == BookOrigin.Catalog)
+            .Where(b => self.Isbn13 == null || b.Isbn13 != self.Isbn13)
+            .Where(b => b.NormalizedTitle != self.NormalizedTitle || !b.Authors.Any(a => authorNames.Contains(a.Author.NormalizedName)))
             .Where(b => b.Authors.Any(a => authorIds.Contains(a.AuthorId)) || b.Genres.Any(g => genreIds.Contains(g.GenreId)))
             .OrderByDescending(b => b.Authors.Count(a => authorIds.Contains(a.AuthorId)))
             .ThenByDescending(b => b.Genres.Count(g => genreIds.Contains(g.GenreId)))

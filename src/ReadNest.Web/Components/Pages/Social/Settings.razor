@@ -2,132 +2,258 @@
 @attribute [Authorize]
 @rendermode AppRenderMode.Interactive
 @inherits ReadNestComponentBase
+@using ReadNest.Application.Library
 @using ReadNest.Application.Social
 @inject ProfileService Profiles
+@inject ShelfService Shelves
 @inject IJSRuntime JS
 
 <AppTitle Text="Settings" />
 
-<PageHeader Title="Settings" Description="Reading preferences, privacy and account security." />
-
-@if (_error is not null)
-{
-    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
-}
-else if (_profile is null)
-{
-    <LoadingIndicator />
-}
-else
-{
-    <div class="rn-grid rn-grid-2">
-        <section class="rn-card">
-            <h2 class="rn-card-title"><Icon Name="settings" /> Reading preferences</h2>
-            <EditForm Model="_form" OnValidSubmit="SavePreferencesAsync" class="rn-form">
-                <DataAnnotationsValidator />
-                <div class="rn-field">
-                    <label class="rn-label" for="pref-language">Preferred book language</label>
-                    <InputSelect id="pref-language" class="rn-select" @bind-Value="_form.PreferredLanguage">
-                        <option value="">Any language</option>
-                        @foreach (var language in SelectOptions.Languages)
-                        {
-                            <option value="@language.Code">@language.Name</option>
-                        }
-                    </InputSelect>
-                    <span class="rn-hint">Used as the default language filter when you search the catalogue.</span>
-                </div>
-                <div class="rn-field">
-                    <label class="rn-label" for="pref-tz">Time zone</label>
-                    <InputSelect id="pref-tz" class="rn-select" @bind-Value="_form.TimeZoneId">
-                        @foreach (var zone in Zones)
-                        {
-                            <option value="@zone">@zone</option>
-                        }
-                    </InputSelect>
-                    <span class="rn-hint">
-                        Decides which calendar day your reading counts toward (streaks, goals and history).
-                        @if (_browserZone is not null && _browserZone != _form.TimeZoneId)
-                        {
-                            <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm" @onclick="() => _form.TimeZoneId = _browserZone">Use @_browserZone</button>
-                        }
-                    </span>
-                    <ValidationMessage For="() => _form.TimeZoneId" />
-                </div>
-                <div class="rn-form-actions">
-                    <button type="submit" class="rn-btn rn-btn-primary" disabled="@IsBusy">Save preferences</button>
-                </div>
-            </EditForm>
-        </section>
-
-        <section class="rn-card">
-            <h2 class="rn-card-title"><Icon Name="lock" /> Privacy</h2>
-            <div class="rn-form">
-                <label class="rn-check">
-                    <input type="checkbox" @bind="_form.IsProfilePublic" />
-                    <span><strong>Public profile</strong><br /><span class="rn-subtle">Other readers can find you, view your profile and follow you.</span></span>
-                </label>
-                <label class="rn-check">
-                    <input type="checkbox" @bind="_form.IsLibraryPublic" disabled="@(!_form.IsProfilePublic)" />
-                    <span><strong>Public reading list</strong><br /><span class="rn-subtle">Show your books, statuses and ratings on your public profile. Notes, private reviews and loans are never shared.</span></span>
-                </label>
-                <div class="rn-form-actions">
-                    <button type="button" class="rn-btn rn-btn-primary" disabled="@IsBusy" @onclick="SavePrivacyAsync">Save privacy settings</button>
-                </div>
-            </div>
-            <hr class="rn-divider" />
-            <p class="rn-muted rn-mb-0">Individual reviews and shelves have their own public/private switch.</p>
-        </section>
-
-        <section class="rn-card">
-            <h2 class="rn-card-title"><Icon Name="user" /> Account &amp; security</h2>
-            <p class="rn-muted">Change your email or password, set up two-factor authentication or passkeys, download your account data, or delete your account.</p>
-            <div class="rn-flex rn-flex-wrap">
-                <a class="rn-btn rn-btn-secondary" href="Account/Manage" data-enhance-nav="false">Manage account</a>
-                <a class="rn-btn rn-btn-ghost" href="Account/Manage/ChangePassword" data-enhance-nav="false">Change password</a>
-            </div>
-        </section>
-
-        <section class="rn-card">
-            <h2 class="rn-card-title"><Icon Name="download" /> Your data</h2>
-            <p class="rn-muted">Export your library and everything you've written, or import a reading list.</p>
-            <a class="rn-btn rn-btn-secondary" href="import-export">Import &amp; export</a>
-        </section>
+<div class="rn-page tight" style="max-width:860px">
+    <div style="display:flex; flex-direction:column; gap:6px">
+        <h1 class="rn-mb-0" tabindex="-1">Settings</h1>
+        <p class="rn-mb-0" style="font-size:16px; color:var(--color-neutral-700)">Your account is private by default. Your public profile only shows what you choose below.</p>
     </div>
-}
+    <div role="tablist" aria-label="Settings sections" class="rn-tabs">
+        @foreach (var (key, label) in Tabs)
+        {
+            <a role="tab" class="rn-tab bold" aria-selected="@(Tab == key ? "true" : "false")" href="@("settings" + (key == "profile" ? "" : "?tab=" + key))">@label</a>
+        }
+    </div>
+
+    @if (_error is not null)
+    {
+        <ErrorAlert Message="@_error" Title="We couldn’t load your settings" OnRetry="RefreshAsync" />
+    }
+    else if (_profile is null)
+    {
+        <LoadingIndicator Kind="inline" />
+    }
+    else
+    {
+        @switch (Tab)
+        {
+            case "reading":
+                <section aria-label="Reading preferences" class="rn-card" style="gap:22px">
+                    <EditForm Model="_prefs" OnValidSubmit="SavePreferencesAsync" class="rn-form">
+                        <DataAnnotationsValidator />
+                        <div class="rn-field">
+                            <label class="rn-label" for="pref-language">Preferred book language</label>
+                            <InputSelect id="pref-language" class="rn-select" @bind-Value="_prefs.PreferredLanguage">
+                                <option value="">Any language</option>
+                                @foreach (var language in SelectOptions.Languages)
+                                {
+                                    <option value="@language.Code">@language.Name</option>
+                                }
+                            </InputSelect>
+                            <span class="rn-hint">Used as the default language when you search the catalogue.</span>
+                        </div>
+                        <div class="rn-field">
+                            <label class="rn-label" for="pref-tz">Time zone</label>
+                            <InputSelect id="pref-tz" class="rn-select" @bind-Value="_prefs.TimeZoneId">
+                                @foreach (var zone in Zones)
+                                {
+                                    <option value="@zone">@zone</option>
+                                }
+                            </InputSelect>
+                            <span class="rn-hint">
+                                Decides which day your reading counts toward, for streaks, goals and history.
+                                @if (_browserZone is not null && _browserZone != _prefs.TimeZoneId)
+                                {
+                                    <button type="button" class="rn-link-button" @onclick="() => _prefs.TimeZoneId = _browserZone">Use this device’s zone (@_browserZone)</button>
+                                }
+                            </span>
+                            <ValidationMessage For="() => _prefs.TimeZoneId" />
+                        </div>
+                        <div class="rn-form-actions start"><button type="submit" class="rn-btn rn-btn-primary" disabled="@IsBusy">Save preferences</button></div>
+                    </EditForm>
+                </section>
+                break;
+
+            case "privacy":
+                <section aria-label="Privacy" class="rn-card" style="gap:8px">
+                    <div class="rn-switch-row">
+                        <div><strong>Public profile</strong><span>Other readers can find you, see your profile and follow you.</span></div>
+                        <button type="button" role="switch" class="rn-switch" aria-checked="@(_profile.IsProfilePublic ? "true" : "false")" aria-label="Public profile" disabled="@IsBusy" @onclick="ToggleProfilePublicAsync"></button>
+                    </div>
+                    <div class="rn-switch-row">
+                        <div><strong>Show my reading list</strong><span>Books, statuses and ratings appear on your profile. Notes, private reviews and loans never do.</span></div>
+                        <button type="button" role="switch" class="rn-switch" aria-checked="@(_profile.IsLibraryPublic ? "true" : "false")" aria-label="Show my reading list" disabled="@(IsBusy || !_profile.IsProfilePublic)" @onclick="ToggleLibraryPublicAsync"></button>
+                    </div>
+                    <span class="rn-heading" style="font-size:20px; padding-top:18px">Shelf visibility</span>
+                    @if (_shelves is { Count: 0 })
+                    {
+                        <span class="rn-subtle">You haven’t made any shelves yet.</span>
+                    }
+                    @foreach (var shelf in _shelves ?? [])
+                    {
+                        <div class="rn-switch-row" style="padding:10px 0" @key="shelf.Id">
+                            <div><strong style="font-size:15px">@shelf.Name</strong><span>@Formats.Count(shelf.BookCount, "book") · @(shelf.IsPublic ? "Public, with a share link" : "Private")</span></div>
+                            <button type="button" role="switch" class="rn-switch" aria-checked="@(shelf.IsPublic ? "true" : "false")" aria-label="@("Make " + shelf.Name + " public")" disabled="@IsBusy" @onclick="() => ToggleShelfAsync(shelf)"></button>
+                        </div>
+                    }
+                    <span class="rn-subtle" style="padding-top:10px">Each review has its own Private or Public choice on the book’s page.</span>
+                </section>
+                break;
+
+            case "appearance":
+                <section aria-label="Appearance" class="rn-card" style="gap:16px">
+                    <span class="rn-heading" style="font-size:20px">Theme</span>
+                    <div role="radiogroup" aria-label="Theme" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px">
+                        @foreach (var (value, label, swatch) in Themes)
+                        {
+                            var v = value;
+                            <label style="display:flex; flex-direction:column; gap:12px; padding:16px; border-radius:var(--radius-lg); background:var(--color-neutral-100); cursor:pointer">
+                                <span aria-hidden="true" style="display:flex; gap:8px; padding:14px; border-radius:var(--radius-md); @swatch">
+                                    <span style="width:28px; height:40px; border-radius:4px; background:#d67f48"></span>
+                                    <span style="flex:1; display:flex; flex-direction:column; gap:6px; padding-top:4px"><span style="height:8px; width:70%; border-radius:99px; background:#82796a"></span><span style="height:6px; width:45%; border-radius:99px; background:#a19786"></span></span>
+                                </span>
+                                <span class="rn-radio"><input type="radio" name="theme" checked="@(_theme == v)" @onchange="() => SetThemeAsync(v)" /><span class="dot"></span>@label</span>
+                            </label>
+                        }
+                    </div>
+                    <span class="rn-subtle">Saved on this device. Motion follows your device’s reduced-motion setting; progress bars still update, without animating.</span>
+                </section>
+                break;
+
+            case "account":
+                <section aria-label="Account" class="rn-card" style="gap:20px">
+                    <div class="rn-field">
+                        <label class="rn-label" for="set-email">Email</label>
+                        <input id="set-email" class="rn-input" value="@_email" readonly />
+                        <span class="rn-hint">Change it from <a href="Account/Manage/Email" data-enhance-nav="false">email settings</a>.</span>
+                    </div>
+                    <div class="rn-actions">
+                        <a class="rn-btn rn-btn-secondary paper" href="Account/Manage/ChangePassword" data-enhance-nav="false"><Icon Name="lock" />Change password</a>
+                        <a class="rn-btn rn-btn-secondary paper" href="Account/Manage/TwoFactorAuthentication" data-enhance-nav="false"><Icon Name="check-circle" />Two-factor and passkeys</a>
+                        <a class="rn-btn rn-btn-secondary paper" href="import-export"><Icon Name="archive" />Export my data</a>
+                        <form action="Account/Logout" method="post" style="margin:0">
+                            <AntiforgeryToken />
+                            <input type="hidden" name="ReturnUrl" value="" />
+                            <button type="submit" class="rn-btn rn-btn-secondary paper"><Icon Name="logout" />Sign out</button>
+                        </form>
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; align-items:center; gap:12px 20px; padding-top:18px; border-top:1px solid var(--color-divider)">
+                        <div style="flex:1 1 280px; display:flex; flex-direction:column; gap:2px">
+                            <strong style="font-size:16px">Delete account</strong>
+                            <span class="rn-subtle">Permanently removes your library, notes and reviews. Export first if you want a copy.</span>
+                        </div>
+                        <a class="rn-btn rn-btn-danger" href="Account/Manage/DeletePersonalData" data-enhance-nav="false">Delete account…</a>
+                    </div>
+                </section>
+                break;
+
+            default:
+                <section aria-label="Profile" class="rn-card" style="gap:22px">
+                    <EditForm Model="_form" OnValidSubmit="SaveProfileAsync" class="rn-form" style="gap:22px">
+                        <DataAnnotationsValidator />
+                        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:16px 20px">
+                            <Avatar Name="@_form.DisplayName" ImageUrl="@_form.ProfileImageUrl" Size="lg" />
+                            <div class="rn-field" style="flex:1 1 260px">
+                                <label class="rn-label" for="set-photo">Profile photo link <span class="optional">(optional)</span></label>
+                                <div style="display:flex; gap:8px; align-items:center">
+                                    <InputText id="set-photo" class="rn-input" @bind-Value="_form.ProfileImageUrl" maxlength="1000" placeholder="https://…" />
+                                    @if (!string.IsNullOrEmpty(_form.ProfileImageUrl))
+                                    {
+                                        <button type="button" class="rn-btn rn-btn-ghost" @onclick="() => _form.ProfileImageUrl = null">Use initials</button>
+                                    }
+                                </div>
+                                <ValidationMessage For="() => _form.ProfileImageUrl" />
+                            </div>
+                        </div>
+                        <div class="rn-field">
+                            <label class="rn-label" for="set-name">Display name</label>
+                            <InputText id="set-name" class="rn-input" @bind-Value="_form.DisplayName" maxlength="80" />
+                            <ValidationMessage For="() => _form.DisplayName" />
+                        </div>
+                        <div class="rn-field">
+                            <label class="rn-label" for="set-handle">Handle</label>
+                            <div class="rn-input-prefix"><span>@@</span><InputText id="set-handle" class="rn-input" @bind-Value="_form.Handle" maxlength="30" autocomplete="off" /></div>
+                            <span class="rn-hint">Lower-case letters, numbers, hyphens and underscores. Your profile lives at @Navigation.ToAbsoluteUri("u/" + _form.Handle)</span>
+                            <ValidationMessage For="() => _form.Handle" />
+                        </div>
+                        <div class="rn-field">
+                            <label class="rn-label" for="set-bio">Short bio</label>
+                            <InputTextArea id="set-bio" class="rn-textarea" @bind-Value="_form.Bio" maxlength="500" style="min-height:110px" />
+                            <span class="rn-hint">@((_form.Bio?.Length ?? 0).ToString("N0")) / 500</span>
+                            <ValidationMessage For="() => _form.Bio" />
+                        </div>
+                        <div class="rn-form-actions start">
+                            <button type="submit" class="rn-btn rn-btn-primary" disabled="@IsBusy">Save profile</button>
+                            <a class="rn-btn rn-btn-ghost" href="profile">See your public profile</a>
+                        </div>
+                    </EditForm>
+                </section>
+                break;
+        }
+    }
+</div>
 
 @code {
+    private static readonly (string Key, string Label)[] Tabs =
+        [("profile", "Profile"), ("reading", "Reading"), ("privacy", "Privacy"), ("appearance", "Appearance"), ("account", "Account")];
+
+    private static readonly (string Value, string Label, string Swatch)[] Themes =
+    [
+        ("light", "Paper (light)", "background:#eee7db; box-shadow:inset 0 0 0 1px rgba(32,30,29,.16)"),
+        ("dark", "Lamplight (dark)", "background:#2e2b25"),
+        ("system", "Match my device", "background:linear-gradient(90deg, #eee7db 50%, #2e2b25 50%)"),
+    ];
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    [SupplyParameterFromQuery(Name = "tab")] public string? TabQuery { get; set; }
+
     private Guid _userId;
     private ProfileDto? _profile;
-    private PreferencesFormModel _form = new();
+    private IReadOnlyList<ShelfDto>? _shelves;
+    private ProfileFormModel _form = new();
+    private PreferencesFormModel _prefs = new();
     private string? _browserZone;
+    private string? _email;
+    private string _theme = "system";
     private string? _error;
 
-    private IEnumerable<string> Zones =>
-        SelectOptions.TimeZones.Concat(new[] { _form.TimeZoneId, _browserZone ?? "UTC" }).Distinct().Order();
+    private string Tab => Tabs.Any(t => t.Key == TabQuery) ? TabQuery! : "profile";
+
+    private IEnumerable<string> Zones => SelectOptions.TimeZones.Concat([_prefs.TimeZoneId, _browserZone ?? "UTC"]).Distinct().Order();
 
     protected override async Task OnInitializedAsync()
     {
         _userId = await RequireUserIdAsync();
+        if (AuthState is not null)
+        {
+            _email = (await AuthState).User.Identity?.Name;
+        }
+
         await RefreshAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (!firstRender)
         {
-            try
+            return;
+        }
+
+        try
+        {
+            _theme = await JS.InvokeAsync<string>("readnest.getTheme");
+            var zone = await JS.InvokeAsync<string?>("readnest.timeZone");
+            if (zone is { Length: > 0 and <= 64 } && UserClock.IsKnownTimeZone(zone))
             {
-                var zone = await JS.InvokeAsync<string?>("readnest.timeZone");
-                if (zone is { Length: > 0 and <= 64 } && ReadNest.Application.Common.UserClock.IsKnownTimeZone(zone))
-                {
-                    _browserZone = zone;
-                    StateHasChanged();
-                }
+                _browserZone = zone;
             }
-            catch (JSException)
-            {
-                // Time zone detection is a convenience only.
-            }
+
+            StateHasChanged();
+        }
+        catch (JSException)
+        {
+            // Theme and time-zone detection are conveniences only.
+        }
+        catch (JSDisconnectedException)
+        {
         }
     }
 
@@ -136,28 +262,60 @@ else
         _error = await LoadAsync(async () =>
         {
             _profile = await Profiles.GetOrCreateAsync(_userId, null, null, ComponentToken);
-            _form = new PreferencesFormModel
+            _form = new ProfileFormModel { DisplayName = _profile.DisplayName, Handle = _profile.Handle, Bio = _profile.Bio, ProfileImageUrl = _profile.ProfileImageUrl };
+            _prefs = new PreferencesFormModel
             {
                 PreferredLanguage = _profile.PreferredLanguage,
                 TimeZoneId = _profile.TimeZoneId,
                 IsProfilePublic = _profile.IsProfilePublic,
                 IsLibraryPublic = _profile.IsLibraryPublic,
             };
+            _shelves = await Shelves.ListAsync(_userId, ComponentToken);
         });
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        var request = new ProfileUpdateRequest(_form.DisplayName, _form.Handle, _form.Bio, string.IsNullOrWhiteSpace(_form.ProfileImageUrl) ? null : _form.ProfileImageUrl);
+        await RunAsync(async () => _profile = await Profiles.UpdateProfileAsync(_userId, request, ComponentToken), "Profile saved.");
     }
 
     private async Task SavePreferencesAsync()
     {
-        var language = string.IsNullOrEmpty(_form.PreferredLanguage) ? null : _form.PreferredLanguage;
-        await RunAsync(async () => _profile = await Profiles.UpdatePreferencesAsync(_userId, new PreferencesRequest(language, _form.TimeZoneId), ComponentToken), "Preferences saved.");
+        var language = string.IsNullOrEmpty(_prefs.PreferredLanguage) ? null : _prefs.PreferredLanguage;
+        await RunAsync(async () => _profile = await Profiles.UpdatePreferencesAsync(_userId, new PreferencesRequest(language, _prefs.TimeZoneId), ComponentToken), "Preferences saved.");
     }
 
-    private async Task SavePrivacyAsync()
+    private Task ToggleProfilePublicAsync() => SavePrivacyAsync(!_profile!.IsProfilePublic, _profile.IsLibraryPublic);
+
+    private Task ToggleLibraryPublicAsync() => SavePrivacyAsync(_profile!.IsProfilePublic, !_profile.IsLibraryPublic);
+
+    private async Task SavePrivacyAsync(bool profilePublic, bool libraryPublic)
     {
-        var ok = await RunAsync(async () => _profile = await Profiles.UpdatePrivacyAsync(_userId, new PrivacyRequest(_form.IsProfilePublic, _form.IsLibraryPublic), ComponentToken), "Privacy settings saved.");
-        if (ok && _profile is not null)
+        await RunAsync(
+            async () => _profile = await Profiles.UpdatePrivacyAsync(_userId, new PrivacyRequest(profilePublic, libraryPublic), ComponentToken),
+            profilePublic ? "Your profile is public." : "Your profile is private.");
+    }
+
+    private async Task ToggleShelfAsync(ShelfDto shelf)
+    {
+        var request = new ShelfRequest(shelf.Name, shelf.Description, !shelf.IsPublic);
+        if (await RunAsync(() => Shelves.UpdateAsync(_userId, shelf.Id, request, ComponentToken), request.IsPublic ? shelf.Name + " is public." : shelf.Name + " is private."))
         {
-            _form.IsLibraryPublic = _profile.IsLibraryPublic;
+            _shelves = await Shelves.ListAsync(_userId, ComponentToken);
+        }
+    }
+
+    private async Task SetThemeAsync(string theme)
+    {
+        _theme = theme;
+        try
+        {
+            await JS.InvokeVoidAsync("readnest.setTheme", theme);
+        }
+        catch (JSException)
+        {
+            Toasts.Error("This browser blocked saving the theme.");
         }
     }
 }

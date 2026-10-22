@@ -3,188 +3,232 @@
 @page "/library/currently-reading"
 @page "/library/read"
 @page "/library/paused"
+@page "/library/did-not-finish"
 @attribute [Authorize]
 @rendermode AppRenderMode.Interactive
 @inherits ReadNestComponentBase
 @using ReadNest.Application.Library
+@using ReadNest.Web.Components.Book
 @inject LibraryService Library
 
-<AppTitle Text="@View.Title" />
+<AppTitle Text="@(View.Status is null ? "My library" : View.Label)" />
 
-<PageHeader Title="@View.Title" Description="@View.Description">
-    <Actions>
-        <a class="rn-btn rn-btn-secondary" href="library/add"><Icon Name="plus" /> Add manually</a>
-        <a class="rn-btn rn-btn-primary" href="explore"><Icon Name="search" /> Find books</a>
-    </Actions>
-</PageHeader>
-
-<nav class="rn-tabs" aria-label="Reading status">
-    @foreach (var view in Views)
-    {
-        <a class="rn-tab @(view.Path == View.Path ? "active" : null)" href="@view.Path" aria-current="@(view.Path == View.Path ? "page" : null)">
-            @view.Short <span class="rn-count">@CountFor(view)</span>
-        </a>
-    }
-</nav>
-
-<form class="rn-toolbar" @onsubmit="ApplyFilters" role="search" aria-label="Filter library">
-    <div class="rn-field rn-grow">
-        <label class="rn-label" for="lib-search">Search your library</label>
-        <input id="lib-search" class="rn-input" type="search" maxlength="200" placeholder="Title, author or ISBN" @bind="_search" />
-    </div>
-    <div class="rn-field">
-        <label class="rn-label" for="lib-genre">Genre</label>
-        <select id="lib-genre" class="rn-select" @bind="_genre">
-            <option value="">All genres</option>
-            @foreach (var genre in _options?.Genres ?? [])
-            {
-                <option value="@genre">@genre</option>
-            }
-        </select>
-    </div>
-    <div class="rn-field">
-        <label class="rn-label" for="lib-author">Author</label>
-        <select id="lib-author" class="rn-select" @bind="_author">
-            <option value="">All authors</option>
-            @foreach (var author in _options?.Authors ?? [])
-            {
-                <option value="@author">@author</option>
-            }
-        </select>
-    </div>
-    <div class="rn-field">
-        <label class="rn-label" for="lib-rating">Rating</label>
-        <select id="lib-rating" class="rn-select" @bind="_minRating">
-            <option value="0">Any rating</option>
-            <option value="5">★★★★★ only</option>
-            <option value="4">4 stars &amp; up</option>
-            <option value="3">3 stars &amp; up</option>
-            <option value="1">Rated</option>
-        </select>
-    </div>
-    <div class="rn-field">
-        <label class="rn-label" for="lib-sort">Sort by</label>
-        <select id="lib-sort" class="rn-select" @bind="_sort">
-            <option value="@LibrarySort.LastUpdated">Last updated</option>
-            <option value="@LibrarySort.DateAdded">Date added</option>
-            <option value="@LibrarySort.Title">Title</option>
-            <option value="@LibrarySort.Author">Author</option>
-            <option value="@LibrarySort.CompletedOn">Date finished</option>
-            <option value="@LibrarySort.Rating">Rating</option>
-        </select>
-    </div>
-    <div class="rn-field">
-        <label class="rn-label" for="lib-dir">Order</label>
-        <select id="lib-dir" class="rn-select" @bind="Order">
-            <option value="desc">@(SortIsText ? "Z → A" : "Newest / highest first")</option>
-            <option value="asc">@(SortIsText ? "A → Z" : "Oldest / lowest first")</option>
-        </select>
-    </div>
-    <label class="rn-check" style="align-self:center">
-        <input type="checkbox" @bind="_favorites" /> <span>Favourites</span>
-    </label>
-    <button type="submit" class="rn-btn rn-btn-primary">Apply</button>
-    @if (HasFilters)
-    {
-        <button type="button" class="rn-btn rn-btn-ghost" @onclick="ClearFilters">Clear</button>
-    }
-    <div class="rn-flex ms-auto" role="group" aria-label="Layout">
-        <button type="button" class="rn-btn rn-btn-icon @(_listView ? "rn-btn-ghost" : "rn-btn-secondary")" aria-pressed="@(!_listView ? "true" : "false")" aria-label="Grid view" @onclick="() => _listView = false"><Icon Name="dashboard" /></button>
-        <button type="button" class="rn-btn rn-btn-icon @(_listView ? "rn-btn-secondary" : "rn-btn-ghost")" aria-pressed="@(_listView ? "true" : "false")" aria-label="List view" @onclick="() => _listView = true"><Icon Name="list" /></button>
-    </div>
-</form>
-
-@if (_loading && _result is null)
+@if (_counts is { Total: 0 } && _error is null)
 {
-    <LoadingIndicator Text="Loading your books…" />
+    <div class="rn-page">
+        <div style="display:flex; flex-wrap:wrap; gap:36px; align-items:center; padding:clamp(28px, 5vw, 56px); border-radius:var(--radius-lg); background:var(--color-surface)">
+            <div style="flex:1 1 320px; display:flex; flex-direction:column; align-items:flex-start; gap:14px">
+                <span class="rn-icon-circle lg sage"><Icon Name="library" /></span>
+                <h1 class="rn-mb-0" tabindex="-1" style="font-size:clamp(30px, 3.6vw, 40px)">Your shelves are waiting</h1>
+                <p class="rn-mb-0" style="font-size:16px; line-height:1.65; max-width:52ch">Add what you’re reading now, what you’ve finished and what you mean to get to. Everything stays private unless you choose to share it.</p>
+                <div class="rn-actions" style="padding-top:6px">
+                    <a class="rn-btn rn-btn-primary" href="explore"><Icon Name="compass" />Discover books</a>
+                    <a class="rn-btn rn-btn-secondary" href="library/add">Add a book by hand</a>
+                </div>
+                <span class="rn-subtle">Coming from another app? <a href="import-export">Import a CSV</a>.</span>
+            </div>
+            <div aria-hidden="true" style="flex:0 1 280px; display:flex; gap:12px; align-items:flex-end; height:200px">
+                @foreach (var height in new[] { 70, 100, 82, 60 })
+                {
+                    <div style="flex:1; height:@(height)%; border-radius:var(--radius-sm); border:2px dashed var(--color-neutral-400)"></div>
+                }
+            </div>
+        </div>
+    </div>
 }
-else if (_error is not null)
+else
 {
-    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
-}
-else if (_result is not null)
-{
-    @if (_result.TotalCount == 0)
-    {
-        @if (HasFilters)
+    <div class="rn-page snug">
+        <PageHeader Title="My library" Description="@Summary">
+            <Actions>
+                <a class="rn-btn rn-btn-primary" href="library/add"><Icon Name="plus" />Add a book</a>
+                <a class="rn-btn rn-btn-secondary" href="shelves"><Icon Name="layers" />Shelves</a>
+            </Actions>
+        </PageHeader>
+
+        <div style="display:flex; flex-direction:column; gap:var(--space-4)">
+            <nav aria-label="Reading status" class="rn-tabs">
+                @foreach (var view in Views)
+                {
+                    <a class="rn-tab bold" href="@view.Path" aria-current="@(view.Path == View.Path ? "page" : null)" aria-selected="@(view.Path == View.Path ? "true" : "false")" @key="view.Path">
+                        @if (view.Status is { } status)
+                        {
+                            <Icon Name="@StatusBadge.IconFor(status)" />
+                        }
+                        <span>@view.Label</span>
+                        <span class="count">@CountFor(view)</span>
+                    </a>
+                }
+            </nav>
+            <div aria-label="Search, sort and view" class="rn-toolbar">
+                <form class="rn-input-icon rn-grow" role="search" @onsubmit="ApplyFilters" @onsubmit:preventDefault style="flex:1 1 280px; max-width:440px">
+                    <Icon Name="search" />
+                    <input class="rn-input" type="search" maxlength="200" aria-label="Search your library" placeholder="Search your library" style="min-height:44px; font-size:15px" @bind="_search" />
+                </form>
+                <div style="flex:1 1 auto; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); flex-wrap:wrap">
+                    <div style="display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap">
+                        <label class="rn-sort">
+                            Sort
+                            <select class="rn-select" value="@_sort" @onchange="OnSortChanged">
+                                <option value="@LibrarySort.DateAdded">Recently added</option>
+                                <option value="@LibrarySort.LastUpdated">Recently updated</option>
+                                <option value="@LibrarySort.Title">Title</option>
+                                <option value="@LibrarySort.Author">Author</option>
+                                <option value="@LibrarySort.CompletedOn">Date finished</option>
+                                <option value="@LibrarySort.Rating">Rating</option>
+                            </select>
+                        </label>
+                        <button type="button" class="rn-btn rn-btn-ghost muted" aria-expanded="@(_filtersOpen ? "true" : "false")" @onclick="() => _filtersOpen = !_filtersOpen">
+                            <Icon Name="sliders" />Filters@(ActiveFilterCount > 0 ? " · " + ActiveFilterCount : "")
+                        </button>
+                    </div>
+                    <div role="group" aria-label="View" class="rn-seg icons">
+                        <button type="button" aria-pressed="@(!_listView ? "true" : "false")" aria-label="Grid view" @onclick="() => SetView(false)"><Icon Name="grid" /></button>
+                        <button type="button" aria-pressed="@(_listView ? "true" : "false")" aria-label="List view" @onclick="() => SetView(true)"><Icon Name="list" /></button>
+                    </div>
+                </div>
+            </div>
+            @if (_filtersOpen)
+            {
+                <form class="rn-card tight" style="flex-direction:row; flex-wrap:wrap; align-items:flex-end; gap:12px" @onsubmit="ApplyFilters" @onsubmit:preventDefault aria-label="Filter your library">
+                    <div class="rn-field" style="flex:1 1 180px">
+                        <label class="rn-label" for="lib-genre">Subject</label>
+                        <select id="lib-genre" class="rn-select" @bind="_genre">
+                            <option value="">All subjects</option>
+                            @foreach (var genre in _options?.Genres ?? [])
+                            {
+                                <option value="@genre">@genre</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="rn-field" style="flex:1 1 180px">
+                        <label class="rn-label" for="lib-author">Author</label>
+                        <select id="lib-author" class="rn-select" @bind="_author">
+                            <option value="">All authors</option>
+                            @foreach (var author in _options?.Authors ?? [])
+                            {
+                                <option value="@author">@author</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="rn-field" style="flex:1 1 150px">
+                        <label class="rn-label" for="lib-rating">Your rating</label>
+                        <select id="lib-rating" class="rn-select" @bind="_minRating">
+                            <option value="0">Any</option>
+                            <option value="5">5 stars</option>
+                            <option value="4">4 stars and up</option>
+                            <option value="3">3 stars and up</option>
+                            <option value="1">Rated at all</option>
+                        </select>
+                    </div>
+                    <label class="rn-check" style="align-self:center"><input type="checkbox" @bind="_favorites" /><span>Favourites only</span></label>
+                    <div class="rn-actions" style="margin-left:auto">
+                        @if (HasFilters)
+                        {
+                            <button type="button" class="rn-btn rn-btn-ghost" @onclick="ClearFilters">Clear</button>
+                        }
+                        <button type="submit" class="rn-btn rn-btn-primary rn-btn-sm">Apply</button>
+                    </div>
+                </form>
+            }
+        </div>
+
+        @if (_selected.Count > 0)
         {
-            <EmptyState Title="No books match these filters" IconName="search" Text="Try removing a filter or searching for something else.">
-                <button type="button" class="rn-btn rn-btn-secondary" @onclick="ClearFilters">Clear filters</button>
-            </EmptyState>
+            <div class="rn-bulkbar" role="region" aria-label="Bulk actions">
+                <strong>@Formats.Count(_selected.Count, "book") selected</strong>
+                <div class="spacer"></div>
+                <button type="button" @onclick="() => _shelfOpen = true"><Icon Name="layers" />Add to shelf</button>
+                <select aria-label="Change status of selected books" value="" @onchange="BulkStatusAsync" @key="_bulkKey">
+                    <option value="">Change status…</option>
+                    @foreach (var status in Enum.GetValues<ReadingStatus>())
+                    {
+                        <option value="@status">@status.ToDisplayName()</option>
+                    }
+                </select>
+                <button type="button" @onclick="BulkRemoveAsync"><Icon Name="trash" />Remove</button>
+                <button type="button" class="close" aria-label="Clear selection" @onclick="() => _selected.Clear()"><Icon Name="x" /></button>
+            </div>
+        }
+
+        @if (_error is not null)
+        {
+            <ErrorAlert Message="@_error" Title="We couldn’t load your library" OnRetry="RefreshAsync" />
+        }
+        else if (_result is null)
+        {
+            <LoadingIndicator Kind="grid" Text="Loading your books…" />
+        }
+        else if (_result.TotalCount == 0)
+        {
+            <div class="rn-empty plain">
+                <h2>@NoneMessage</h2>
+                <p>Try a different spelling, switch to All, or look for it in the catalogue.</p>
+                <div class="rn-actions">
+                    <a class="rn-btn rn-btn-secondary" href="library">Show all books</a>
+                    <a class="rn-btn rn-btn-primary" href="@("explore" + (string.IsNullOrWhiteSpace(Q) ? "" : "?q=" + Uri.EscapeDataString(Q)))"><Icon Name="search" />Search the catalogue</a>
+                </div>
+            </div>
+        }
+        else if (_listView)
+        {
+            <div class="rn-list" style="margin-top:var(--space-2)">
+                <div class="rn-hide-mobile" style="display:flex; align-items:center; gap:16px; padding:0 8px 10px; border-bottom:1px solid var(--color-divider); font-size:13px; font-weight:700; color:var(--color-neutral-700)">
+                    <button type="button" class="rn-link-button" style="width:86px; text-align:left; font-size:13px" @onclick="ToggleAll">@(AllSelected ? "Select none" : "Select all")</button>
+                    <span style="flex:1 1 220px">Book</span><span style="flex:0 0 170px">Status</span><span style="flex:1 1 170px">Progress</span><span style="flex:0 1 120px">Rating</span>
+                </div>
+                @foreach (var entry in _result.Items)
+                {
+                    <div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; padding:12px 8px; border-bottom:1px solid var(--color-divider)" @key="entry.Id">
+                        <div style="display:flex; align-items:center; gap:14px; flex:1 1 300px; min-width:0">
+                            <input type="checkbox" style="flex:none; margin:0 6px 0 0" checked="@_selected.Contains(entry.Id)" aria-label="@("Select " + entry.Title)" @onchange="e => Toggle(entry.Id, e)" />
+                            <a class="rn-cover-button" style="width:46px; flex:none" href="@("books/" + entry.BookId)" tabindex="-1" aria-hidden="true"><BookCover Title="@entry.Title" Author="@First(entry.Authors)" Url="@entry.CoverUrl" Isbn="@entry.Isbn13" /></a>
+                            <div class="rn-list-body">
+                                <a class="rn-list-title" href="@("books/" + entry.BookId)">@entry.Title</a>
+                                <span class="rn-subtle">@Authors(entry.Authors)</span>
+                            </div>
+                        </div>
+                        <div style="flex:0 0 170px"><StatusBadge Status="entry.Status" /></div>
+                        <div style="flex:1 1 170px; display:flex; flex-direction:column; gap:6px; font-size:14px">
+                            <span>@Detail(entry)</span>
+                            @if (entry.Status is ReadingStatus.CurrentlyReading or ReadingStatus.Paused && entry.TotalPages is not null)
+                            {
+                                <div style="max-width:160px"><ProgressBar CurrentPage="entry.CurrentPage" TotalPages="entry.TotalPages" ShowLabel="false" Size="sm" /></div>
+                            }
+                        </div>
+                        <div style="flex:0 1 120px"><Stars Value="entry.Rating" IconSize="14" /></div>
+                    </div>
+                }
+            </div>
+            <Pager Page="_result.Page" TotalPages="_result.TotalPages" TotalCount="_result.TotalCount" ItemName="books" OnPageChanged="GoToPage" />
         }
         else
         {
-            <EmptyState Title="@View.EmptyTitle" IconName="library" Text="@View.EmptyText">
-                <a class="rn-btn rn-btn-primary" href="explore">Discover books</a>
-            </EmptyState>
+            <div class="rn-book-grid" role="list" style="margin-top:var(--space-2)">
+                @foreach (var entry in _result.Items)
+                {
+                    <LibraryBookCard Entry="entry" @key="entry.Id" />
+                }
+            </div>
+            <Pager Page="_result.Page" TotalPages="_result.TotalPages" TotalCount="_result.TotalCount" ItemName="books" OnPageChanged="GoToPage" />
         }
-    }
-    else if (_listView)
-    {
-        <div class="rn-card tight rn-table-wrap">
-            <table class="rn-table">
-                <thead>
-                    <tr><th scope="col">Book</th><th scope="col">Status</th><th scope="col">Progress</th><th scope="col">Rating</th><th scope="col">Updated</th></tr>
-                </thead>
-                <tbody>
-                    @foreach (var entry in _result.Items)
-                    {
-                        <tr @key="entry.Id">
-                            <td>
-                                <div class="rn-flex">
-                                    <BookCover Title="@entry.Title" Url="@entry.CoverUrl" Size="xs" />
-                                    <div style="min-width:0">
-                                        <a class="rn-list-title" href="@("books/" + entry.BookId)">@entry.Title</a>
-                                        <div class="rn-subtle rn-truncate">@string.Join(", ", entry.Authors)</div>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>
-                                <label class="visually-hidden" for="@("status-" + entry.Id)">Status for @entry.Title</label>
-                                <select id="@("status-" + entry.Id)" class="rn-select" value="@entry.Status" @onchange="e => QuickStatusAsync(entry, e)">
-                                    @foreach (var status in Enum.GetValues<ReadingStatus>())
-                                    {
-                                        <option value="@status">@status.ToDisplayName()</option>
-                                    }
-                                </select>
-                            </td>
-                            <td style="min-width:140px"><ProgressBar CurrentPage="entry.CurrentPage" TotalPages="entry.TotalPages" ShowLabel="false" /><span class="rn-subtle">@(entry.ProgressPercent is { } p ? p.ToString("0.#") + "%" : entry.CurrentPage > 0 ? "p. " + entry.CurrentPage : "—")</span></td>
-                            <td><Stars Value="entry.Rating" ShowEmpty="true" /></td>
-                            <td class="rn-subtle">@entry.UpdatedAtUtc.ToString("d MMM yyyy")</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    }
-    else
-    {
-        <div class="rn-book-grid">
-            @foreach (var entry in _result.Items)
-            {
-                <LibraryBookCard Entry="entry" ShowStatus="@(View.Statuses is null || View.Statuses.Count > 1)" @key="entry.Id" />
-            }
-        </div>
-    }
+    </div>
 
-    <Pager Page="_result.Page" TotalPages="_result.TotalPages" TotalCount="_result.TotalCount" ItemName="books" OnPageChanged="GoToPage" />
+    <ShelfPickDialog @bind-Open="_shelfOpen" UserId="_userId" EntryIds="_selected.ToList()" OnSaved="AfterBulkAsync" />
+    <ConfirmDialog @ref="_confirm" />
 }
 
 @code {
-    private sealed record LibraryView(string Path, string Title, string Short, string Description, IReadOnlyList<ReadingStatus>? Statuses, string EmptyTitle, string EmptyText);
+    private sealed record LibraryView(string Path, string Label, ReadingStatus? Status);
 
     private static readonly LibraryView[] Views =
     [
-        new("library", "My Library", "All", "Every book in your personal library.", null,
-            "You haven't added any books yet", "Discover a book to start your library."),
-        new("library/want-to-read", "Want to Read", "Want to Read", "Books you're planning to read.", [ReadingStatus.WantToRead],
-            "Your reading list is empty", "Add books you'd like to read next."),
-        new("library/currently-reading", "Currently Reading", "Reading", "Books you're reading right now.", [ReadingStatus.CurrentlyReading],
-            "You're not reading anything right now", "Start a book from your Want to Read list."),
-        new("library/read", "Read", "Read", "Books you've finished.", [ReadingStatus.Read],
-            "No finished books yet", "Books you mark as read will appear here."),
-        new("library/paused", "Paused & Did Not Finish", "Paused & DNF", "Books on hold or set aside.", [ReadingStatus.Paused, ReadingStatus.DidNotFinish],
-            "Nothing paused or abandoned", "Books you pause or stop reading will appear here."),
+        new("library", "All", null),
+        new("library/currently-reading", "Reading", ReadingStatus.CurrentlyReading),
+        new("library/want-to-read", "Want to read", ReadingStatus.WantToRead),
+        new("library/read", "Read", ReadingStatus.Read),
+        new("library/paused", "Paused", ReadingStatus.Paused),
+        new("library/did-not-finish", "Did not finish", ReadingStatus.DidNotFinish),
     ];
 
     [SupplyParameterFromQuery(Name = "q")] public string? Q { get; set; }
@@ -193,7 +237,7 @@ else if (_result is not null)
     [SupplyParameterFromQuery(Name = "rating")] public int? Rating { get; set; }
     [SupplyParameterFromQuery(Name = "fav")] public bool? Favorites { get; set; }
     [SupplyParameterFromQuery(Name = "sort")] public string? Sort { get; set; }
-    [SupplyParameterFromQuery(Name = "desc")] public bool? Descending { get; set; }
+    [SupplyParameterFromQuery(Name = "view")] public string? ViewMode { get; set; }
     [SupplyParameterFromQuery(Name = "page")] public int? PageNumber { get; set; }
 
     private Guid _userId;
@@ -201,16 +245,19 @@ else if (_result is not null)
     private StatusCountsDto? _counts;
     private LibraryFilterOptionsDto? _options;
     private string? _error;
-    private bool _loading;
     private bool _listView;
+    private bool _filtersOpen;
+    private bool _shelfOpen;
+    private int _bulkKey;
+    private readonly HashSet<Guid> _selected = [];
+    private ConfirmDialog _confirm = default!;
 
     private string _search = "";
     private string _genre = "";
     private string _author = "";
     private int _minRating;
     private bool _favorites;
-    private LibrarySort _sort;
-    private bool _descending = true;
+    private LibrarySort _sort = LibrarySort.DateAdded;
 
     private LibraryView View
     {
@@ -221,23 +268,32 @@ else if (_result is not null)
         }
     }
 
-    private bool HasFilters => !string.IsNullOrWhiteSpace(Q) || !string.IsNullOrEmpty(Genre) || !string.IsNullOrEmpty(Author) || Rating > 0 || Favorites == true;
+    private bool HasFilters => !string.IsNullOrWhiteSpace(Q) || ActiveFilterCount > 0;
 
-    private bool SortIsText => _sort is LibrarySort.Title or LibrarySort.Author;
+    private int ActiveFilterCount => (string.IsNullOrEmpty(Genre) ? 0 : 1) + (string.IsNullOrEmpty(Author) ? 0 : 1) + (Rating > 0 ? 1 : 0) + (Favorites == true ? 1 : 0);
 
-    private string Order
-    {
-        get => _descending ? "desc" : "asc";
-        set => _descending = value != "asc";
-    }
+    private bool AllSelected => _result is { Items.Count: > 0 } r && r.Items.All(i => _selected.Contains(i.Id));
+
+    private string Summary => _counts is null
+        ? "Every book you’ve kept, in one place."
+        : Formats.Count(_counts.Total, "book") + " · " + Formats.Number(_counts.CurrentlyReading) + " reading now · " + Formats.Number(_counts.Read) + " read";
+
+    private string NoneMessage => !string.IsNullOrWhiteSpace(Q)
+        ? $"Nothing in {(View.Status is null ? "your library" : View.Label)} matches “{Q}”"
+        : HasFilters ? "No books match these filters" : View.Status switch
+        {
+            ReadingStatus.CurrentlyReading => "You’re not reading anything right now",
+            ReadingStatus.WantToRead => "Your Want to read list is empty",
+            ReadingStatus.Read => "No finished books yet",
+            ReadingStatus.Paused => "Nothing paused",
+            ReadingStatus.DidNotFinish => "No books set aside",
+            _ => "No books here yet",
+        };
 
     protected override async Task OnInitializedAsync()
     {
         _userId = await RequireUserIdAsync();
-        var error = await LoadAsync(async () =>
-        {
-            _options = await Library.GetFilterOptionsAsync(_userId, ComponentToken);
-        });
+        var error = await LoadAsync(async () => _options = await Library.GetFilterOptionsAsync(_userId, ComponentToken));
         if (error is not null)
         {
             Toasts.Error(error);
@@ -251,38 +307,46 @@ else if (_result is not null)
         _author = Author ?? "";
         _minRating = Math.Clamp(Rating ?? 0, 0, 5);
         _favorites = Favorites ?? false;
-        _sort = Enum.TryParse<LibrarySort>(Sort, ignoreCase: true, out var sort) ? sort : LibrarySort.LastUpdated;
-        _descending = Descending ?? !(_sort is LibrarySort.Title or LibrarySort.Author);
+        _sort = Enum.TryParse<LibrarySort>(Sort, ignoreCase: true, out var sort) ? sort : LibrarySort.DateAdded;
+        _listView = string.Equals(ViewMode, "list", StringComparison.OrdinalIgnoreCase);
+        _selected.Clear();
         await RefreshAsync();
     }
 
     private async Task RefreshAsync()
     {
-        _loading = true;
         _error = await LoadAsync(async () =>
         {
-            var statuses = View.Statuses;
             _result = await Library.ListAsync(_userId, new LibraryQuery
             {
                 Search = Q,
-                Statuses = statuses,
+                Status = View.Status,
                 Genre = Genre,
                 Author = Author,
                 MinRating = Rating > 0 ? Rating : null,
                 FavoritesOnly = Favorites ?? false,
                 Sort = _sort,
-                Descending = _descending,
+                Descending = !(_sort is LibrarySort.Title or LibrarySort.Author),
                 Page = PageNumber ?? 1,
                 PageSize = 24,
             }, ComponentToken);
             _counts = await Library.GetStatusCountsAsync(_userId, ComponentToken);
         });
-        _loading = false;
     }
 
-    private string? CountFor(LibraryView view) => _counts is null ? null
-        : view.Statuses is null ? _counts.Total.ToString("N0")
-        : view.Statuses.Sum(_counts.Get).ToString("N0");
+    private string CountFor(LibraryView view) => _counts is null ? "" : (view.Status is { } s ? _counts.Get(s) : _counts.Total).ToString("N0", CultureInfo.CurrentCulture);
+
+    private void OnSortChanged(ChangeEventArgs e)
+    {
+        _sort = Enum.TryParse<LibrarySort>(e.Value?.ToString(), out var sort) ? sort : LibrarySort.DateAdded;
+        Navigate(1);
+    }
+
+    private void SetView(bool list)
+    {
+        _listView = list;
+        Navigate(PageNumber ?? 1);
+    }
 
     private void ApplyFilters() => Navigate(1);
 
@@ -298,9 +362,7 @@ else if (_result is not null)
         Navigate(1);
     }
 
-    private void Navigate(int page)
-    {
-        var defaultDescending = !(_sort is LibrarySort.Title or LibrarySort.Author);
+    private void Navigate(int page) =>
         Navigation.NavigateTo(Navigation.GetUriWithQueryParameters(View.Path, new Dictionary<string, object?>
         {
             ["q"] = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(),
@@ -308,22 +370,104 @@ else if (_result is not null)
             ["author"] = string.IsNullOrEmpty(_author) ? null : _author,
             ["rating"] = _minRating > 0 ? _minRating : null,
             ["fav"] = _favorites ? true : null,
-            ["sort"] = _sort == LibrarySort.LastUpdated ? null : _sort.ToString(),
-            ["desc"] = _descending == defaultDescending ? null : _descending,
+            ["sort"] = _sort == LibrarySort.DateAdded ? null : _sort.ToString(),
+            ["view"] = _listView ? "list" : null,
             ["page"] = page > 1 ? page : null,
         }));
+
+    private void Toggle(Guid id, ChangeEventArgs e)
+    {
+        if (e.Value is true)
+        {
+            _selected.Add(id);
+        }
+        else
+        {
+            _selected.Remove(id);
+        }
     }
 
-    private async Task QuickStatusAsync(LibraryEntryDto entry, ChangeEventArgs e)
+    private void ToggleAll()
     {
-        if (!Enum.TryParse<ReadingStatus>(e.Value?.ToString(), out var status) || status == entry.Status)
+        if (AllSelected)
+        {
+            _selected.Clear();
+        }
+        else if (_result is not null)
+        {
+            _selected.UnionWith(_result.Items.Select(i => i.Id));
+        }
+    }
+
+    private async Task AfterBulkAsync()
+    {
+        _selected.Clear();
+        await RefreshAsync();
+    }
+
+    private async Task BulkStatusAsync(ChangeEventArgs e)
+    {
+        _bulkKey++;
+        if (!Enum.TryParse<ReadingStatus>(e.Value?.ToString(), out var status) || _selected.Count == 0)
         {
             return;
         }
 
-        // Marking as read from the list uses today's date; it can be changed on the book page.
-        var message = status == ReadingStatus.Read ? "Marked as read today. You can change the date on the book page." : $"Moved to {status.ToDisplayName()}.";
-        await RunAsync(() => Library.UpdateStatusAsync(_userId, entry.Id, new UpdateStatusRequest(status), ComponentToken), message);
-        await RefreshAsync();
+        var ids = _selected.ToList();
+        var message = Formats.Count(ids.Count, "book") + " moved to " + StatusBadge.LabelFor(status) + (status == ReadingStatus.Read ? ", finished today." : ".");
+        if (await RunAsync(async () =>
+            {
+                foreach (var id in ids)
+                {
+                    await Library.UpdateStatusAsync(_userId, id, new UpdateStatusRequest(status), ComponentToken);
+                }
+            }, message))
+        {
+            await AfterBulkAsync();
+        }
     }
+
+    private async Task BulkRemoveAsync()
+    {
+        var ids = _selected.ToList();
+        if (ids.Count == 0 || !await _confirm.ConfirmAsync(
+                "Remove " + Formats.Count(ids.Count, "book") + "?",
+                "They leave your library together with their reading sessions, notes, reviews and shelf places. Books that are lent out right now are kept.",
+                "Remove books"))
+        {
+            return;
+        }
+
+        var removed = 0;
+        var kept = 0;
+        await RunAsync(async () =>
+        {
+            foreach (var id in ids)
+            {
+                var impact = await Library.GetRemovalImpactAsync(_userId, id, ComponentToken);
+                if (impact.HasOutstandingLoan)
+                {
+                    kept++;
+                    continue;
+                }
+
+                await Library.RemoveAsync(_userId, id, ComponentToken);
+                removed++;
+            }
+        });
+        Toasts.Success(Formats.Count(removed, "book") + " removed." + (kept > 0 ? " " + Formats.Count(kept, "book") + " on loan " + (kept == 1 ? "was" : "were") + " kept." : ""));
+        await AfterBulkAsync();
+    }
+
+    private static string Detail(LibraryEntryDto entry) => entry.Status switch
+    {
+        ReadingStatus.CurrentlyReading or ReadingStatus.Paused => ProgressBar.PageText(entry.CurrentPage, entry.TotalPages) + (entry.ProgressPercent is { } p ? " · " + ProgressBar.Format(p) : ""),
+        ReadingStatus.Read => entry.CompletedOn is { } d ? "Finished " + Formats.Long(d) : "Finished",
+        ReadingStatus.DidNotFinish => "Stopped at " + ProgressBar.PageText(entry.CurrentPage, entry.TotalPages),
+        _ => "Added " + Formats.Long(entry.AddedAtUtc),
+    };
+
+    private static string? First(IReadOnlyList<string> authors) => authors.Count > 0 ? authors[0] : null;
+
+    private static string Authors(IReadOnlyList<string> authors) => authors.Count > 0 ? string.Join(", ", authors) : "Unknown author";
 }

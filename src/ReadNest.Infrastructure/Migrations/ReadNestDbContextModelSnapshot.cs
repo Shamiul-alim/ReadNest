@@ -175,7 +175,6 @@ namespace ReadNest.Infrastructure.Migrations
             modelBuilder.Entity("ReadNest.Domain.Entities.Author", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Name")
@@ -199,7 +198,6 @@ namespace ReadNest.Infrastructure.Migrations
             modelBuilder.Entity("ReadNest.Domain.Entities.Book", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("CoverImageUrl")
@@ -342,7 +340,6 @@ namespace ReadNest.Infrastructure.Migrations
             modelBuilder.Entity("ReadNest.Domain.Entities.BookLoan", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("BorrowerName")
@@ -410,7 +407,6 @@ namespace ReadNest.Infrastructure.Migrations
             modelBuilder.Entity("ReadNest.Domain.Entities.CustomShelf", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAtUtc")
@@ -476,7 +472,6 @@ namespace ReadNest.Infrastructure.Migrations
             modelBuilder.Entity("ReadNest.Domain.Entities.Genre", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Name")
@@ -742,7 +737,6 @@ namespace ReadNest.Infrastructure.Migrations
             modelBuilder.Entity("ReadNest.Domain.Entities.ReadingChallenge", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAtUtc")
@@ -789,7 +783,6 @@ namespace ReadNest.Infrastructure.Migrations
             modelBuilder.Entity("ReadNest.Domain.Entities.ReadingGoal", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAtUtc")
@@ -826,7 +819,6 @@ namespace ReadNest.Infrastructure.Migrations
             modelBuilder.Entity("ReadNest.Domain.Entities.ReadingNote", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("Chapter")
@@ -868,7 +860,6 @@ namespace ReadNest.Infrastructure.Migrations
             modelBuilder.Entity("ReadNest.Domain.Entities.ReadingSession", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAtUtc")
@@ -911,10 +902,27 @@ namespace ReadNest.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ReadNest.Domain.Entities.RecommendationDismissal", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("DismissedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId", "BookId");
+
+                    b.HasIndex("BookId");
+
+                    b.ToTable("RecommendationDismissals");
+                });
+
             modelBuilder.Entity("ReadNest.Domain.Entities.UserBook", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<DateOnly?>("AcquiredOn")
@@ -1414,6 +1422,21 @@ namespace ReadNest.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("UserBook");
+                });
+
+            modelBuilder.Entity("ReadNest.Domain.Entities.RecommendationDismissal", b =>
+                {
+                    b.HasOne("ReadNest.Domain.Entities.Book", null)
+                        .WithMany()
+                        .HasForeignKey("BookId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ReadNest.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ReadNest.Domain.Entities.UserBook", b =>

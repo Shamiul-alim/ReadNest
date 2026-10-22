@@ -1,0 +1,186 @@
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Library
+@inject ShelfService Shelves
+
+@* Add one or more library entries to shelves. For a single entry the current shelves are pre-ticked and can be
+   unticked; for a selection of several books shelves are only added to. A book can live on many shelves. *@
+<Modal Title="@Heading" Open="Open" OpenChanged="OnOpenChanged">
+    <ChildContent>
+        @if (_shelves is null)
+        {
+            <LoadingIndicator Kind="inline" />
+        }
+        else
+        {
+            @if (_shelves.Count == 0)
+            {
+                <p class="rn-subtle rn-mb-0">You don’t have any shelves yet. Name one below to start.</p>
+            }
+            <div class="rn-list">
+                @foreach (var shelf in _shelves)
+                {
+                    <label class="rn-list-item" style="cursor:pointer; padding:12px 4px; min-height:48px" @key="shelf.Id">
+                        <input type="checkbox" checked="@_checked.Contains(shelf.Id)" @onchange="e => Toggle(shelf.Id, e)" />
+                        <span style="flex:1; font-size:16px; font-weight:600; overflow-wrap:anywhere">@shelf.Name</span>
+                        <span class="rn-subtle">@Formats.Count(shelf.BookCount, "book")</span>
+                    </label>
+                }
+            </div>
+            @if (_adding)
+            {
+                <form @onsubmit="CreateShelfAsync" @onsubmit:preventDefault style="display:flex; gap:8px; align-items:center">
+                    <label class="visually-hidden" for="@(_id + "-new")">New shelf name</label>
+                    <input id="@(_id + "-new")" class="rn-input" maxlength="80" placeholder="e.g. Book club, Comfort reads" @bind="_newName" @bind:event="oninput" />
+                    <button type="submit" class="rn-btn rn-btn-secondary" disabled="@(IsBusy || string.IsNullOrWhiteSpace(_newName))">Create</button>
+                </form>
+            }
+            else
+            {
+                <button type="button" class="rn-btn rn-btn-ghost" style="align-self:flex-start" @onclick="() => _adding = true"><Icon Name="plus" />New shelf</button>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="rn-btn rn-btn-secondary" @onclick="CloseAsync">Cancel</button>
+        <button type="button" class="rn-btn rn-btn-primary" data-autofocus disabled="@(IsBusy || _shelves is null)" @onclick="SaveAsync">Save</button>
+    </Footer>
+</Modal>
+
+@code {
+    private readonly string _id = "shelfpick-" + Guid.NewGuid().ToString("N")[..8];
+    private IReadOnlyList<ShelfDto>? _shelves;
+    private HashSet<Guid> _initial = [];
+    private HashSet<Guid> _checked = [];
+    private bool _adding;
+    private string _newName = "";
+    private bool _wasOpen;
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter, EditorRequired] public Guid UserId { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<Guid> EntryIds { get; set; } = [];
+
+    /// <summary>The book's title when a single book is being shelved.</summary>
+    [Parameter] public string? BookTitle { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private string Heading => EntryIds.Count == 1
+        ? "Shelves for " + (BookTitle ?? "this book")
+        : "Add " + Formats.Count(EntryIds.Count, "book") + " to shelves";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Open && !_wasOpen)
+        {
+            _wasOpen = true;
+            _adding = false;
+            _newName = "";
+            _shelves = null;
+            var error = await LoadAsync(async () =>
+            {
+                _shelves = await Shelves.ListAsync(UserId, ComponentToken);
+                _initial = EntryIds.Count == 1
+                    ? (await Shelves.GetMembershipAsync(UserId, EntryIds[0], ComponentToken)).Where(m => m.ContainsEntry).Select(m => m.ShelfId).ToHashSet()
+                    : [];
+                _checked = [.. _initial];
+            });
+            if (error is not null)
+            {
+                Toasts.Error(error);
+                await CloseAsync();
+            }
+        }
+        else if (!Open)
+        {
+            _wasOpen = false;
+        }
+    }
+
+    private void Toggle(Guid shelfId, ChangeEventArgs e)
+    {
+        if (e.Value is true)
+        {
+            _checked.Add(shelfId);
+        }
+        else
+        {
+            _checked.Remove(shelfId);
+        }
+    }
+
+    private async Task CreateShelfAsync()
+    {
+        var name = _newName.Trim();
+        if (name.Length == 0)
+        {
+            return;
+        }
+
+        Guid id = default;
+        if (await RunAsync(async () => id = await Shelves.CreateAsync(UserId, new ShelfRequest(name, null, false), ComponentToken)))
+        {
+            _shelves = await Shelves.ListAsync(UserId, ComponentToken);
+            _checked.Add(id);
+            _newName = "";
+            _adding = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        var added = _checked.Except(_initial).ToList();
+        var removed = EntryIds.Count == 1 ? _initial.Except(_checked).ToList() : [];
+        if (added.Count == 0 && removed.Count == 0)
+        {
+            await CloseAsync();
+            return;
+        }
+
+        var names = _shelves!.ToDictionary(s => s.Id, s => s.Name);
+        var message = added.Count + removed.Count == 1
+            ? (added.Count == 1 ? "Added to " + names[added[0]] + "." : "Removed from " + names[removed[0]] + ".")
+            : "Shelves updated.";
+        var userId = UserId;
+        var entries = EntryIds.ToList();
+        var ok = await RunAsync(
+            async () =>
+            {
+                foreach (var shelfId in added)
+                {
+                    foreach (var entryId in entries)
+                    {
+                        await Shelves.AddEntryAsync(userId, shelfId, entryId, ComponentToken);
+                    }
+                }
+
+                foreach (var shelfId in removed)
+                {
+                    await Shelves.RemoveEntryAsync(userId, shelfId, entries[0], ComponentToken);
+                }
+            },
+            message,
+            undo: async () =>
+            {
+                foreach (var shelfId in removed)
+                {
+                    await Shelves.AddEntryAsync(userId, shelfId, entries[0], CancellationToken.None);
+                }
+
+                await OnSaved.InvokeAsync();
+            });
+        if (ok)
+        {
+            await CloseAsync();
+            await OnSaved.InvokeAsync();
+        }
+    }
+
+    private async Task OnOpenChanged(bool open)
+    {
+        Open = open;
+        _wasOpen = open;
+        await OpenChanged.InvokeAsync(open);
+    }
+
+    private Task CloseAsync() => OnOpenChanged(false);
+}

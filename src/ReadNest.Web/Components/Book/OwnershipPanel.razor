@@ -3,8 +3,7 @@
 @inject CollectionService Collection
 @inject LibraryService Library
 
-<section class="rn-card" aria-labelledby="ownership-heading">
-    <h2 class="rn-card-title" id="ownership-heading"><Icon Name="archive" /> Your copy</h2>
+<div class="rn-card">
     <EditForm Model="_form" OnValidSubmit="SaveAsync" class="rn-form">
         <DataAnnotationsValidator />
         <div class="rn-form-row">
@@ -58,7 +57,7 @@
             <strong>Lending</strong>
             @if (!Entry.HasOutstandingLoan)
             {
-                <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" @onclick="OpenLend"><Icon Name="handshake" /> Lend this book</button>
+                <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" @onclick="OpenLend"><Icon Name="swap" />Lend this book</button>
             }
         </div>
         @if (_loans is null)
@@ -78,27 +77,31 @@
                         <div class="rn-list-body">
                             <strong>@loan.BorrowerName</strong>
                             <div class="rn-subtle">
-                                Lent @loan.LoanedOn.ToString("d MMM yyyy")
+                                Lent @Formats.Long(loan.LoanedOn)
                                 @if (loan.ReturnedOn is { } returned)
                                 {
-                                    <span> · returned @returned.ToString("d MMM yyyy")</span>
+                                    <span> · returned @Formats.Long(returned)</span>
                                 }
                                 else if (loan.DueOn is { } due)
                                 {
-                                    <span class="@(loan.IsOverdue ? "rn-error-text" : null)"> · due @due.ToString("d MMM yyyy")@(loan.IsOverdue ? " (overdue)" : "")</span>
+                                    <span> · expected back @Formats.Long(due)</span>
                                 }
                             </div>
+                            @if (loan.IsOverdue && loan.ReturnedOn is null)
+                            {
+                                <span class="rn-chip soft-clay" style="align-self:flex-start; margin-top:4px"><Icon Name="clock" />Past its return date</span>
+                            }
                         </div>
                         @if (loan.ReturnedOn is null)
                         {
-                            <button type="button" class="rn-btn rn-btn-primary rn-btn-sm" disabled="@IsBusy" @onclick="() => ReturnAsync(loan)">Mark returned</button>
+                            <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" disabled="@IsBusy" @onclick="() => ReturnAsync(loan)"><Icon Name="check" />Mark returned</button>
                         }
                     </div>
                 }
             </div>
         }
     }
-</section>
+</div>
 
 <Modal Title="Lend this book" @bind-Open="_lendOpen">
     <LoanFields Model="_loan" OnValidSubmit="LendAsync" OnCancel="() => _lendOpen = false" Busy="IsBusy" />

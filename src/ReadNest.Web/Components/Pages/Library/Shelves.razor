@@ -3,86 +3,61 @@
 @rendermode AppRenderMode.Interactive
 @inherits ReadNestComponentBase
 @using ReadNest.Application.Library
+@using ReadNest.Web.Components.Book
 @inject ShelfService ShelfService
 
-<AppTitle Text="Custom shelves" />
+<AppTitle Text="Shelves" />
 
-<PageHeader Title="Custom shelves" Description="Group books your way — by topic, project or mood. A book can sit on as many shelves as you like.">
-    <Actions>
-        <button type="button" class="rn-btn rn-btn-primary" @onclick="OpenCreate"><Icon Name="plus" /> New shelf</button>
-    </Actions>
-</PageHeader>
+<div class="rn-page tight">
+    <PageHeader Title="Shelves" Description="Group books however makes sense to you. A book can live on as many shelves as you like.">
+        <Actions>
+            <button type="button" class="rn-btn rn-btn-primary" @onclick="() => _newOpen = true"><Icon Name="plus" />New shelf</button>
+        </Actions>
+    </PageHeader>
 
-@if (_error is not null)
-{
-    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
-}
-else if (_shelves is null)
-{
-    <LoadingIndicator />
-}
-else if (_shelves.Count == 0)
-{
-    <EmptyState Title="No shelves yet" IconName="layers" Text="Create shelves such as “Software Engineering”, “Research” or “Books to Buy”.">
-        <button type="button" class="rn-btn rn-btn-primary" @onclick="OpenCreate">Create your first shelf</button>
-    </EmptyState>
-}
-else
-{
-    <div class="rn-grid rn-grid-3">
-        @foreach (var shelf in _shelves)
-        {
-            <article class="rn-card" @key="shelf.Id">
-                <div class="rn-flex" style="gap:6px;margin-bottom:var(--rn-space-3)">
-                    @foreach (var cover in shelf.PreviewCovers.Take(4))
-                    {
-                        <BookCover Title="@shelf.Name" Url="@cover" Size="sm" />
-                    }
-                    @if (shelf.PreviewCovers.Count == 0)
-                    {
-                        <div class="rn-empty-icon" style="margin:0"><Icon Name="layers" /></div>
-                    }
-                </div>
-                <h2 class="h5 rn-mb-0"><a class="rn-list-title" href="@("shelves/" + shelf.Id)">@shelf.Name</a></h2>
-                <div class="rn-subtle mb-2">
-                    @shelf.BookCount book@(shelf.BookCount == 1 ? "" : "s") ·
-                    @if (shelf.IsPublic)
-                    {
-                        <span><Icon Name="globe" /> Public</span>
-                    }
-                    else
-                    {
-                        <span><Icon Name="lock" /> Private</span>
-                    }
-                </div>
-                @if (!string.IsNullOrEmpty(shelf.Description))
-                {
-                    <p class="rn-muted">@shelf.Description</p>
-                }
-                <div class="rn-flex">
-                    <a class="rn-btn rn-btn-secondary rn-btn-sm" href="@("shelves/" + shelf.Id)">Open</a>
-                    <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm" @onclick="() => OpenEdit(shelf)"><Icon Name="pen" /> Edit</button>
-                    <button type="button" class="rn-btn rn-btn-danger-ghost rn-btn-sm ms-auto" aria-label="@("Delete shelf " + shelf.Name)" @onclick="() => DeleteAsync(shelf)"><Icon Name="trash" /></button>
-                </div>
-            </article>
-        }
-    </div>
-}
+    @if (_error is not null)
+    {
+        <ErrorAlert Message="@_error" Title="We couldn’t load your shelves" OnRetry="RefreshAsync" />
+    }
+    else if (_shelves is null)
+    {
+        <LoadingIndicator Kind="grid" Text="Loading your shelves…" />
+    }
+    else
+    {
+        <div class="rn-grid" style="grid-template-columns:repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap:22px">
+            @foreach (var shelf in _shelves)
+            {
+                <a class="rn-shelf-card" href="@("shelves/" + shelf.Id)" @key="shelf.Id">
+                    <CoverFan Books="shelf.Previews ?? []" />
+                    <span style="display:flex; flex-direction:column; gap:4px">
+                        <span class="rn-shelf-name">@shelf.Name</span>
+                        @if (!string.IsNullOrWhiteSpace(shelf.Description))
+                        {
+                            <span class="rn-subtle" style="line-height:1.5">@shelf.Description</span>
+                        }
+                    </span>
+                    <span class="rn-shelf-meta">
+                        <span>@Formats.Count(shelf.BookCount, "book")</span>
+                        <span><Icon Name="@(shelf.IsPublic ? "globe" : "lock")" Size="15" />@(shelf.IsPublic ? "Public" : "Private")</span>
+                    </span>
+                </a>
+            }
+            <button type="button" class="rn-shelf-card new" @onclick="() => _newOpen = true">
+                <span class="rn-icon-circle neutral" style="width:52px; height:52px"><Icon Name="plus" /></span>
+                <span class="rn-heading">New shelf</span>
+            </button>
+        </div>
+    }
+</div>
 
-<Modal Title="@(_editingId is null ? "New shelf" : "Edit shelf")" @bind-Open="_open">
-    <ShelfFields Model="_form" OnValidSubmit="SaveAsync" OnCancel="() => _open = false" Busy="IsBusy" />
-</Modal>
-
-<ConfirmDialog @ref="_confirm" />
+<ShelfEditDialog @bind-Open="_newOpen" UserId="_userId" OnSaved="OnCreated" />
 
 @code {
     private Guid _userId;
     private IReadOnlyList<ShelfDto>? _shelves;
     private string? _error;
-    private bool _open;
-    private Guid? _editingId;
-    private ShelfFormModel _form = new();
-    private ConfirmDialog _confirm = default!;
+    private bool _newOpen;
 
     protected override async Task OnInitializedAsync()
     {
@@ -93,47 +68,5 @@ else
     private async Task RefreshAsync() =>
         _error = await LoadAsync(async () => _shelves = await ShelfService.ListAsync(_userId, ComponentToken));
 
-    private void OpenCreate()
-    {
-        _editingId = null;
-        _form = new ShelfFormModel();
-        _open = true;
-    }
-
-    private void OpenEdit(ShelfDto shelf)
-    {
-        _editingId = shelf.Id;
-        _form = new ShelfFormModel { Name = shelf.Name, Description = shelf.Description, IsPublic = shelf.IsPublic };
-        _open = true;
-    }
-
-    private async Task SaveAsync()
-    {
-        var request = new ShelfRequest(_form.Name, _form.Description, _form.IsPublic);
-        var ok = await RunAsync(async () =>
-        {
-            if (_editingId is { } id)
-            {
-                await ShelfService.UpdateAsync(_userId, id, request, ComponentToken);
-            }
-            else
-            {
-                await ShelfService.CreateAsync(_userId, request, ComponentToken);
-            }
-        }, _editingId is null ? "Shelf created." : "Shelf updated.");
-        if (ok)
-        {
-            _open = false;
-            await RefreshAsync();
-        }
-    }
-
-    private async Task DeleteAsync(ShelfDto shelf)
-    {
-        if (await _confirm.ConfirmAsync($"Delete “{shelf.Name}”?", "The shelf will be deleted. The books on it stay in your library.", "Delete shelf")
-            && await RunAsync(() => ShelfService.DeleteAsync(_userId, shelf.Id, ComponentToken), "Shelf deleted."))
-        {
-            await RefreshAsync();
-        }
-    }
+    private void OnCreated(Guid shelfId) => Navigation.NavigateTo("shelves/" + shelfId);
 }

@@ -1,0 +1,184 @@
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Library
+@inject LibraryService Library
+
+@* Update progress: current page pre-filled and focused, slider, quick chips, live preview and Undo.
+   Mirrors UserBook.UpdateProgress (Want to read / Paused move to Reading). *@
+<Modal Title="Update progress" Open="Open" OpenChanged="OnOpenChanged">
+    <ChildContent>
+        <div style="display:flex; gap:14px; align-items:center">
+            <BookCover Title="@Title" Author="@Author" Url="@CoverUrl" Isbn="@Isbn" Size="xs" />
+            <div style="display:flex; flex-direction:column; min-width:0">
+                <span class="rn-heading" style="font-size:17px; line-height:1.2">@Title</span>
+                <span class="rn-subtle">@Author</span>
+            </div>
+        </div>
+        <form id="@_formId" @onsubmit="SaveAsync" @onsubmit:preventDefault novalidate style="display:flex; flex-direction:column; gap:18px">
+            <div class="rn-field">
+                <label class="rn-label" for="@(_formId + "-page")" style="font-size:15px">What page are you on?</label>
+                <div style="display:flex; align-items:center; gap:12px">
+                    <input id="@(_formId + "-page")" data-autofocus class="rn-input big-number @(Error is null ? null : "invalid")" type="number" inputmode="numeric"
+                           min="0" max="@TotalPages" value="@_text" @oninput="OnPageInput" aria-invalid="@(Error is null ? "false" : "true")"
+                           aria-describedby="@(_formId + "-err")" />
+                    @if (TotalPages is { } total)
+                    {
+                        <span style="font-size:18px; font-weight:600">of @total.ToString("N0")</span>
+                    }
+                </div>
+            </div>
+            @if (TotalPages is { } max)
+            {
+                <input type="range" min="0" max="@max" value="@(_page ?? CurrentPage)" @oninput="OnPageInput" aria-label="Drag to set your page" style="width:100%; margin:0" />
+            }
+            <div class="rn-quick">
+                @foreach (var step in QuickSteps)
+                {
+                    <button type="button" @onclick="() => Set(CurrentPage + step)">+@step</button>
+                }
+                @if (TotalPages is { } last)
+                {
+                    <button type="button" class="sage" @onclick="() => Set(last)">I finished it</button>
+                }
+            </div>
+            <div class="rn-preview">
+                <div class="rn-progress-head">
+                    <span style="font-size:14px; font-weight:600">@DeltaText</span>
+                    @if (PreviewPercent is { } pct)
+                    {
+                        <span class="rn-big">@ProgressBar.Format(pct)</span>
+                    }
+                </div>
+                @if (TotalPages is not null)
+                {
+                    <ProgressBar CurrentPage="Math.Max(0, _page ?? CurrentPage)" TotalPages="TotalPages" ShowLabel="false" Size="md" />
+                }
+            </div>
+            @if (Error is not null)
+            {
+                <span id="@(_formId + "-err")" class="rn-error-text" role="alert"><Icon Name="alert" />@Error</span>
+            }
+        </form>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="rn-btn rn-btn-secondary" @onclick="CloseAsync">Cancel</button>
+        <button type="submit" form="@_formId" class="rn-btn rn-btn-primary" disabled="@(Error is not null || IsBusy)">@(ReachesEnd ? "Save and finish" : "Save progress")</button>
+    </Footer>
+</Modal>
+
+@code {
+    private static readonly int[] QuickSteps = [5, 10, 25];
+    private readonly string _formId = "progress-" + Guid.NewGuid().ToString("N")[..8];
+    private string _text = "";
+    private int? _page;
+    private bool _wasOpen;
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter, EditorRequired] public Guid UserId { get; set; }
+    [Parameter, EditorRequired] public Guid EntryId { get; set; }
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Author { get; set; }
+    [Parameter] public string? CoverUrl { get; set; }
+    [Parameter] public string? Isbn { get; set; }
+    [Parameter] public int CurrentPage { get; set; }
+    [Parameter] public int? TotalPages { get; set; }
+
+    /// <summary>Raised after a save (and after Undo) so the page can refresh every progress indicator.</summary>
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    /// <summary>Raised when the reader reaches the last page, to open the Finish dialog.</summary>
+    [Parameter] public EventCallback OnFinishRequested { get; set; }
+
+    private bool ReachesEnd => TotalPages is { } total && _page == total && Error is null;
+
+    private decimal? PreviewPercent => ReadNest.Domain.Entities.UserBook.CalculateProgress(Math.Max(0, _page ?? CurrentPage), TotalPages);
+
+    private string? Error => _page switch
+    {
+        null => "Enter the page you’re on.",
+        < 0 => "Pages start at 0.",
+        var p when TotalPages is { } total && p > total => $"Page {p:N0} is past the last page ({total:N0}).",
+        _ => null,
+    };
+
+    private string DeltaText
+    {
+        get
+        {
+            var delta = (_page ?? CurrentPage) - CurrentPage;
+            return delta switch
+            {
+                0 => "Same page as last time",
+                > 0 => "+" + delta.ToString("N0") + (delta == 1 ? " page" : " pages") + " since your last update",
+                _ => (-delta).ToString("N0") + ((-delta) == 1 ? " page" : " pages") + " back from your last update",
+            };
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen)
+        {
+            _page = CurrentPage;
+            _text = CurrentPage.ToString(CultureInfo.InvariantCulture);
+        }
+
+        _wasOpen = Open;
+    }
+
+    private void OnPageInput(ChangeEventArgs e)
+    {
+        _text = e.Value?.ToString() ?? "";
+        _page = int.TryParse(_text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var page) ? page : null;
+    }
+
+    private void Set(int page)
+    {
+        _page = TotalPages is { } total ? Math.Min(page, total) : page;
+        _text = _page.Value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (Error is not null || _page is not { } page)
+        {
+            return;
+        }
+
+        var finished = ReachesEnd;
+        ProgressUpdateResult? result = null;
+        var userId = UserId;
+        var entryId = EntryId;
+        var ok = await RunAsync(
+            async () => result = await Library.ApplyProgressAsync(userId, entryId, new UpdateProgressRequest(page), ComponentToken),
+            "Progress saved · " + ProgressBar.PageText(page, TotalPages),
+            undo: async () =>
+            {
+                if (result is not null)
+                {
+                    await Library.UndoProgressAsync(userId, entryId, result, CancellationToken.None);
+                    await OnSaved.InvokeAsync();
+                }
+            });
+        if (!ok)
+        {
+            return;
+        }
+
+        await CloseAsync();
+        await OnSaved.InvokeAsync();
+        if (finished)
+        {
+            await OnFinishRequested.InvokeAsync();
+        }
+    }
+
+    private async Task OnOpenChanged(bool open)
+    {
+        Open = open;
+        _wasOpen = open;
+        await OpenChanged.InvokeAsync(open);
+    }
+
+    private Task CloseAsync() => OnOpenChanged(false);
+}

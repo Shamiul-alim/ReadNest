@@ -7,6 +7,8 @@
 
 <AppTitle Text="Import & export" />
 
+
+<div class="rn-page tight">
 <PageHeader Title="Import &amp; export" Description="Keep your own copy of your reading data, or bring in a reading list from a spreadsheet." />
 
 <div class="rn-grid rn-grid-2">
@@ -94,12 +96,13 @@ Clean Code,Robert C. Martin,9780132350884,Currently Reading,180,464,,2026-09-01,
 The Hobbit,J. R. R. Tolkien,,Read,,310,5,,2026-03-14,true,Fiction; Favourites</pre>
     <ul class="rn-muted ps-3 rn-mb-0">
         <li><strong>Author</strong> and <strong>Shelves</strong>: separate multiple values with semicolons.</li>
-        <li><strong>Status</strong>: Want to Read, Currently Reading, Read, Paused or Did Not Finish (empty = Want to Read).</li>
+        <li><strong>Status</strong>: Want to read, Currently reading, Read, Paused or Did not finish (empty means Want to read).</li>
         <li><strong>Rating</strong>: 1–5. <strong>Dates</strong>: YYYY-MM-DD, not in the future. <strong>CompletedOn</strong> only with status Read.</li>
         <li>Rows with an ISBN that matches a catalogue book reuse it; other rows create private book records visible only to you.</li>
         <li>Imports never create reading sessions, so your statistics only reflect reading you actually log.</li>
     </ul>
 </section>
+</div>
 
 @code {
     private IBrowserFile? _file;

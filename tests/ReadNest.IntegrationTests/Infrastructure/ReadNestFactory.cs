@@ -118,3 +118,18 @@ public static class HttpExtensions
     public static Task<HttpResponseMessage> PutJsonAsync(this HttpClient client, string url, object body) =>
         client.PutAsJsonAsync(url, body, ReadNestFactory.Json);
 }
+
+public static class ResponseExtensions
+{
+    /// <summary>Returns the body, failing with the status and body when the request was not successful.</summary>
+    public static async Task<string> ReadSuccessStringAsync(this HttpResponseMessage response)
+    {
+        var body = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException($"{(int)response.StatusCode} {response.StatusCode}: {body}");
+        }
+
+        return body;
+    }
+}

@@ -4,121 +4,33 @@
 @inherits ReadNestComponentBase
 @using ReadNest.Application.Social
 @inject ProfileService Profiles
-@inject SocialService Social
 
-<AppTitle Text="Profile" />
-
-<PageHeader Title="Your profile" Description="How you appear to other readers when your profile is public.">
-    <Actions>
-        @if (_profile is not null)
-        {
-            <a class="rn-btn rn-btn-secondary" href="@("u/" + _profile.Handle)"><Icon Name="user" /> View public profile</a>
-        }
-    </Actions>
-</PageHeader>
-
+@* Your own public profile, as other readers see it. Editing lives in Settings. *@
 @if (_error is not null)
 {
-    <ErrorAlert Message="@_error" OnRetry="RefreshAsync" />
+    <ErrorAlert Message="@_error" Title="We couldn’t load your profile" OnRetry="LoadHandleAsync" />
 }
-else if (_profile is null)
+else if (_handle is null)
 {
-    <LoadingIndicator />
+    <LoadingIndicator Text="Loading your profile…" />
 }
 else
 {
-    <div class="rn-split">
-        <section class="rn-card">
-            <h2 class="rn-card-title"><Icon Name="pen" /> Edit profile</h2>
-            <EditForm Model="_form" OnValidSubmit="SaveAsync" class="rn-form">
-                <DataAnnotationsValidator />
-                <div class="rn-flex">
-                    <Avatar Name="@_form.DisplayName" ImageUrl="@_form.ProfileImageUrl" Size="lg" />
-                    <div class="rn-subtle">Your avatar uses the image URL below, or your initial if none is set.</div>
-                </div>
-                <div class="rn-form-row">
-                    <div class="rn-field">
-                        <label class="rn-label" for="profile-name">Display name</label>
-                        <InputText id="profile-name" class="rn-input" @bind-Value="_form.DisplayName" maxlength="80" />
-                        <ValidationMessage For="() => _form.DisplayName" />
-                    </div>
-                    <div class="rn-field">
-                        <label class="rn-label" for="profile-handle">Handle</label>
-                        <InputText id="profile-handle" class="rn-input" @bind-Value="_form.Handle" maxlength="30" autocomplete="off" />
-                        <span class="rn-hint">Your public address: /u/@_form.Handle</span>
-                        <ValidationMessage For="() => _form.Handle" />
-                    </div>
-                </div>
-                <div class="rn-field">
-                    <label class="rn-label" for="profile-bio">Bio</label>
-                    <InputTextArea id="profile-bio" class="rn-textarea" @bind-Value="_form.Bio" maxlength="500" placeholder="What do you like to read?" />
-                    <ValidationMessage For="() => _form.Bio" />
-                </div>
-                <div class="rn-field">
-                    <label class="rn-label" for="profile-image">Profile image URL</label>
-                    <InputText id="profile-image" class="rn-input" @bind-Value="_form.ProfileImageUrl" maxlength="1000" placeholder="https://…" />
-                    <span class="rn-hint">Optional. Must be an https:// image link.</span>
-                    <ValidationMessage For="() => _form.ProfileImageUrl" />
-                </div>
-                <div class="rn-form-actions">
-                    <button type="submit" class="rn-btn rn-btn-primary" disabled="@IsBusy">Save profile</button>
-                </div>
-            </EditForm>
-        </section>
-
-        <div>
-            <section class="rn-card">
-                <h2 class="rn-card-title"><Icon Name="globe" /> Visibility</h2>
-                <p class="rn-muted">
-                    Your profile is <strong>@(_profile.IsProfilePublic ? "public" : "private")</strong>
-                    and your reading list is <strong>@(_profile.IsLibraryPublic ? "public" : "private")</strong>.
-                    Notes, private reviews and lending details are never shown.
-                </p>
-                <a class="rn-btn rn-btn-secondary rn-btn-sm" href="settings">Change privacy settings</a>
-            </section>
-            <section class="rn-card">
-                <h2 class="rn-card-title"><Icon Name="users" /> Connections</h2>
-                <p class="rn-muted rn-mb-0">Following <strong>@_following</strong> · <strong>@_followers</strong> follower@(_followers == 1 ? "" : "s")</p>
-                <a class="rn-btn rn-btn-ghost rn-btn-sm mt-2" href="community">Find readers</a>
-            </section>
-        </div>
-    </div>
+    <ProfileView Handle="@_handle" />
 }
 
 @code {
-    private Guid _userId;
-    private ProfileDto? _profile;
-    private ProfileFormModel _form = new();
-    private int _followers;
-    private int _following;
+    private string? _handle;
     private string? _error;
 
-    protected override async Task OnInitializedAsync()
-    {
-        _userId = await RequireUserIdAsync();
-        await RefreshAsync();
-    }
+    protected override Task OnInitializedAsync() => LoadHandleAsync();
 
-    private async Task RefreshAsync()
+    private async Task LoadHandleAsync()
     {
         _error = await LoadAsync(async () =>
         {
-            _profile = await Profiles.GetOrCreateAsync(_userId, null, null, ComponentToken);
-            _form = new ProfileFormModel
-            {
-                DisplayName = _profile.DisplayName,
-                Handle = _profile.Handle,
-                Bio = _profile.Bio,
-                ProfileImageUrl = _profile.ProfileImageUrl,
-            };
-            _followers = (await Social.GetFollowersAsync(_userId, ComponentToken)).Count;
-            _following = (await Social.GetFollowingAsync(_userId, ComponentToken)).Count;
+            var userId = await RequireUserIdAsync();
+            _handle = (await Profiles.GetOrCreateAsync(userId, null, null, ComponentToken)).Handle;
         });
-    }
-
-    private async Task SaveAsync()
-    {
-        var request = new ProfileUpdateRequest(_form.DisplayName, _form.Handle, _form.Bio, _form.ProfileImageUrl);
-        await RunAsync(async () => _profile = await Profiles.UpdateProfileAsync(_userId, request, ComponentToken), "Profile saved.");
     }
 }

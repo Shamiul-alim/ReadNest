@@ -1,10 +1,11 @@
-@* Usage: if (await confirm.ConfirmAsync("Delete note?", "This cannot be undone.", "Delete")) { ... } *@
+@* Usage: if (await confirm.ConfirmAsync("Delete note?", "This cannot be undone.", "Delete")) { ... }
+   Cancel comes first and takes focus; the destructive action uses the deep terracotta fill. *@
 <Modal Title="@_title" Open="_open" OpenChanged="OnOpenChanged">
     <ChildContent>
-        <p class="rn-mb-0">@_message</p>
+        <p class="rn-mb-0" style="font-size:16px; line-height:1.6">@_message</p>
         @if (_details is not null)
         {
-            <ul class="mt-3 mb-0 rn-subtle">
+            <ul class="rn-mb-0" style="padding-left:1.2rem; color:var(--color-neutral-700)">
                 @foreach (var line in _details)
                 {
                     <li>@line</li>
@@ -13,7 +14,7 @@
         }
     </ChildContent>
     <Footer>
-        <button type="button" class="rn-btn rn-btn-secondary" @onclick="() => Complete(false)">Cancel</button>
+        <button type="button" class="rn-btn rn-btn-secondary" data-autofocus @onclick="() => Complete(false)">Cancel</button>
         <button type="button" class="rn-btn @(_danger ? "rn-btn-danger" : "rn-btn-primary")" @onclick="() => Complete(true)">@_confirmText</button>
     </Footer>
 </Modal>

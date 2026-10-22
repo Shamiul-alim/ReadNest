@@ -22,6 +22,9 @@ public sealed class UserClock(TimeProvider timeProvider)
 
     public DateOnly TodayIn(string? timeZoneId) => LocalDate(timeProvider.GetUtcNow(), timeZoneId);
 
+    /// <summary>The current wall-clock time in the reader's time zone (UTC when unknown).</summary>
+    public DateTime LocalNow(string? timeZoneId) => TimeZoneInfo.ConvertTime(timeProvider.GetUtcNow(), ResolveTimeZone(timeZoneId)).DateTime;
+
     public static DateOnly LocalDate(DateTimeOffset instant, string? timeZoneId)
     {
         var zone = ResolveTimeZone(timeZoneId);

@@ -33,6 +33,17 @@ internal sealed class UserFollowConfiguration : IEntityTypeConfiguration<UserFol
     }
 }
 
+internal sealed class RecommendationDismissalConfiguration : IEntityTypeConfiguration<RecommendationDismissal>
+{
+    public void Configure(EntityTypeBuilder<RecommendationDismissal> builder)
+    {
+        builder.HasKey(d => new { d.UserId, d.BookId });
+        builder.HasIndex(d => d.BookId);
+        builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(d => d.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Book>().WithMany().HasForeignKey(d => d.BookId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 internal sealed class ReadingChallengeConfiguration : IEntityTypeConfiguration<ReadingChallenge>
 {
     public void Configure(EntityTypeBuilder<ReadingChallenge> builder)

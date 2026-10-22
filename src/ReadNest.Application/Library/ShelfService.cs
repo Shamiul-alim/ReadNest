@@ -17,7 +17,11 @@ public sealed record ShelfDto(
     string ShareSlug,
     int BookCount,
     IReadOnlyList<string?> PreviewCovers,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    IReadOnlyList<ShelfPreviewDto>? Previews = null);
+
+/// <summary>A book shown in a shelf's cover fan; the title drives the typographic cover when there is no image.</summary>
+public sealed record ShelfPreviewDto(string Title, string? CoverUrl);
 
 public sealed record ShelfMembershipDto(Guid ShelfId, string Name, bool ContainsEntry);
 
@@ -47,7 +51,8 @@ public sealed class ShelfService(IReadNestDbContextFactory dbFactory, UserClock 
                 s.ShareSlug,
                 s.Entries.Count,
                 s.Entries.OrderByDescending(e => e.AddedAtUtc).Take(4).Select(e => e.UserBook.Book.CoverImageUrl).ToList(),
-                s.UpdatedAtUtc))
+                s.UpdatedAtUtc,
+                s.Entries.OrderByDescending(e => e.AddedAtUtc).Take(4).Select(e => new ShelfPreviewDto(e.UserBook.Book.Title, e.UserBook.Book.CoverImageUrl)).ToList()))
             .ToListAsync(cancellationToken);
     }
 

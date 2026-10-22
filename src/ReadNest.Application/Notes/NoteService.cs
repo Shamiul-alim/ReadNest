@@ -19,7 +19,9 @@ public sealed record NoteDto(
     int? PageNumber,
     string? Chapter,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    string? CoverUrl = null,
+    IReadOnlyList<string>? Authors = null);
 
 public sealed record NoteQuery(string? Search = null, NoteType? Type = null, Guid? EntryId = null, int Page = 1, int PageSize = 20);
 
@@ -120,7 +122,9 @@ public sealed class NoteService(IReadNestDbContextFactory dbFactory, UserClock c
         n.PageNumber,
         n.Chapter,
         n.CreatedAtUtc,
-        n.UpdatedAtUtc);
+        n.UpdatedAtUtc,
+        n.UserBook.Book.CoverImageUrl,
+        n.UserBook.Book.Authors.OrderBy(a => a.Position).Select(a => a.Author.Name).ToList());
 }
 
 public sealed record NamedEntryDto(Guid EntryId, string Title, int Count);
