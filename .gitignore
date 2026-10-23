@@ -484,3 +484,6 @@ $RECYCLE.BIN/
 # e2e smoke test
 tests/e2e/node_modules/
 tests/e2e/shots/
+
+# Uploaded files (profile photos, reading files) stored locally in development
+App_Data/

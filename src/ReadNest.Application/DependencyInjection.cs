@@ -30,6 +30,9 @@ public static class DependencyInjection
         services.AddScoped<CollectionService>();
         services.AddScoped<ShelfService>();
         services.AddScoped<ReadingSessionService>();
+        services.AddScoped<ReadingFileService>();
+        services.AddScoped<ReadingSourcesService>();
+        services.AddScoped<ProfilePhotoService>();
         services.AddScoped<NoteService>();
         services.AddScoped<ReviewService>();
         services.AddScoped<GoalService>();

@@ -1,4 +1,4 @@
-@page "/Account/Register"
+﻿@page "/Account/Register"
 
 @using System.ComponentModel.DataAnnotations
 @using System.Text
@@ -23,6 +23,7 @@
     <p class="rn-auth-sub">Free, and private by default. You can export everything at any time.</p>
 </div>
 <StatusMessage Message="@Message" />
+<GoogleSignInButton ReturnUrl="@ReturnUrl" />
 <EditForm Model="Input" method="post" OnValidSubmit="RegisterUser" FormName="register" class="rn-form" novalidate>
     <DataAnnotationsValidator />
     <div class="rn-field">

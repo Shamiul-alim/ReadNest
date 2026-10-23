@@ -51,6 +51,9 @@ authentication.AddPolicyScheme(cookieOrBearer, "Identity cookie or bearer token"
 authentication.AddBearerToken(IdentityConstants.BearerScheme);
 authentication.AddIdentityCookies();
 
+// "Continue with Google" is enabled only when Authentication:Google:ClientId and ClientSecret are configured.
+authentication.AddGoogleIfConfigured(builder.Configuration);
+
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.Cookie.Name = "ReadNest.Auth";

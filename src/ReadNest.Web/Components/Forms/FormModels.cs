@@ -174,6 +174,10 @@ public sealed class PreferencesFormModel
 
 public static class SelectOptions
 {
+    /// <summary>Language choices for an <see cref="Shared.AppSelect{TValue}"/>; "" (the first option) means any language.</summary>
+    public static IReadOnlyList<Shared.SelectOption<string>> LanguageChoices(string anyLabel) =>
+        [Shared.SelectOption.Of("", anyLabel), .. Languages.Select(l => Shared.SelectOption.Of(l.Code, l.Name))];
+
     public static readonly IReadOnlyList<(string Code, string Name)> Languages =
     [
         ("en", "English"), ("es", "Spanish"), ("fr", "French"), ("de", "German"), ("it", "Italian"), ("pt", "Portuguese"),

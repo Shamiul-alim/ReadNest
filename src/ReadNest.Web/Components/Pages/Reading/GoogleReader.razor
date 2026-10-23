@@ -1,0 +1,68 @@
+@page "/reader/google/{VolumeId}"
+@layout ReaderLayout
+@using System.Text.RegularExpressions
+
+@* Google Books embedded viewer. Google decides what is shown: a full view for public-domain or fully viewable
+   books, otherwise a publisher preview with pages left out. Loaded with a full page load so this page's CSP
+   (which allows Google's viewer script and frame) applies; app.js starts the viewer. *@
+<AppTitle Text="@(Title is null ? "Google Books" : Title + " · Google Books")" />
+
+<div class="rn-reader theme-paper">
+    <header class="rn-reader-bar">
+        <a class="rn-btn rn-btn-ghost rn-btn-icon" href="@BackHref" aria-label="Back to the book page"><Icon Name="arrow-left" /></a>
+        <div class="rn-reader-title">
+            <strong>@(Title ?? "Google Books")</strong>
+            <span>@(Full ? "Full view" : "Read Preview") · shown by Google Books</span>
+        </div>
+        @if (IsValid)
+        {
+            <a class="rn-btn rn-btn-secondary rn-btn-sm" href="@GooglePage" target="_blank" rel="noopener noreferrer">Open on Google Books <Icon Name="external" Size="14" /></a>
+        }
+    </header>
+    <main id="reader-main" class="rn-reader-stage rn-google-viewer-wrap" tabindex="-1" aria-label="Google Books viewer">
+        @if (IsValid)
+        {
+            <div class="rn-google-viewer" data-google-viewer="@VolumeId" aria-label="Book preview"></div>
+            <div class="rn-reader-message rn-google-loading" role="status"><span class="rn-spinner" aria-hidden="true"></span><span>Loading Google's viewer…</span></div>
+            <div class="rn-reader-message rn-google-failed" role="alert">
+                <span class="rn-reader-notice-icon"><Icon Name="alert" Size="28" /></span>
+                <h1>The preview couldn't be shown here</h1>
+                <p>Google may not allow this book to be embedded, or the viewer was blocked. You can still open it on Google Books.</p>
+                <a class="rn-btn rn-btn-primary" href="@GooglePage" target="_blank" rel="noopener noreferrer">Open on Google Books</a>
+            </div>
+            @if (!Full)
+            {
+                <p class="rn-reader-source rn-google-note">This is a preview chosen by the publisher. Some pages are not included.</p>
+            }
+        }
+        else
+        {
+            <div class="rn-reader-message" role="alert">
+                <h1>That Google Books link isn't valid</h1>
+                <a class="rn-btn rn-btn-primary" href="@BackHref">Go back</a>
+            </div>
+        }
+    </main>
+</div>
+
+@code {
+    private static readonly Regex VolumeIdPattern = new("^[A-Za-z0-9_-]{6,20}$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
+
+    [Parameter] public string VolumeId { get; set; } = "";
+
+    [SupplyParameterFromQuery(Name = "book")] public Guid? BookId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "title")] public string? TitleQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "view")] public string? View { get; set; }
+
+    private bool IsValid => VolumeIdPattern.IsMatch(VolumeId);
+
+    private bool Full => View == "full";
+
+    private string? Title => string.IsNullOrWhiteSpace(TitleQuery) ? null : TitleQuery.Length > 200 ? TitleQuery[..200] : TitleQuery;
+
+    private string BackHref => BookId is { } id ? "books/" + id : "explore";
+
+    private string GooglePage => "https://books.google.com/books?id=" + Uri.EscapeDataString(VolumeId);
+}

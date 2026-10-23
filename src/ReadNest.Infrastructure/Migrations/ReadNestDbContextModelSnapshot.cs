@@ -780,6 +780,92 @@ namespace ReadNest.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ReadNest.Domain.Entities.ReadingFile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("LastLocation")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("LastOpenedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("LastPage")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("LastPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<int?>("PageCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("PositionUpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .IsFixedLength();
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("SourceNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("SourceUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("UploadedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserBookId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique();
+
+                    b.HasIndex("UserBookId")
+                        .IsUnique();
+
+                    b.ToTable("ReadingFiles", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ReadingFiles_Page", "\"LastPage\" IS NULL OR \"LastPage\" >= 1");
+
+                            t.HasCheckConstraint("CK_ReadingFiles_Percent", "\"LastPercent\" IS NULL OR \"LastPercent\" BETWEEN 0 AND 100");
+
+                            t.HasCheckConstraint("CK_ReadingFiles_Size", "\"SizeBytes\" > 0");
+                        });
+                });
+
             modelBuilder.Entity("ReadNest.Domain.Entities.ReadingGoal", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1079,6 +1165,13 @@ namespace ReadNest.Infrastructure.Migrations
                     b.Property<bool>("IsProfilePublic")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("PhotoKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<long>("PhotoVersion")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("PreferredLanguage")
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)");
@@ -1086,6 +1179,27 @@ namespace ReadNest.Infrastructure.Migrations
                     b.Property<string>("ProfileImageUrl")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("ReaderFlow")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int>("ReaderFontScale")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ReaderLineHeight")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ReaderTheme")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("ReaderWidth")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<string>("TimeZoneId")
                         .IsRequired()
@@ -1391,6 +1505,17 @@ namespace ReadNest.Infrastructure.Migrations
                         .HasForeignKey("OwnerUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("ReadNest.Domain.Entities.ReadingFile", b =>
+                {
+                    b.HasOne("ReadNest.Domain.Entities.UserBook", "UserBook")
+                        .WithOne()
+                        .HasForeignKey("ReadNest.Domain.Entities.ReadingFile", "UserBookId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("UserBook");
                 });
 
             modelBuilder.Entity("ReadNest.Domain.Entities.ReadingGoal", b =>

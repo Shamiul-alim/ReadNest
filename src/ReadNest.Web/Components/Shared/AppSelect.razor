@@ -1,0 +1,353 @@
+@typeparam TValue
+@implements IAsyncDisposable
+@using System.Linq.Expressions
+@inject IJSRuntime JS
+
+@* Accessible custom select (WAI-ARIA select-only combobox + listbox). The value, options and open state live in
+   .NET; js/select.js handles keys, highlighting, viewport placement and outside clicks. Works inside EditForm
+   (field change notification and the invalid state) and outside it. *@
+<div class="rn-select-ctl @SizeClass @Class @(_open ? "is-open" : null) @(IsInvalid ? "invalid" : null) @(Disabled ? "is-disabled" : null)" @ref="_root">
+    <button type="button" id="@TriggerId" class="rn-select-trigger" role="combobox"
+            aria-haspopup="listbox" aria-expanded="@(_open ? "true" : "false")" aria-controls="@_listId"
+            aria-label="@AriaLabel" aria-labelledby="@AriaLabelledBy" aria-describedby="@AriaDescribedBy"
+            aria-invalid="@(IsInvalid ? "true" : null)" aria-busy="@(Loading ? "true" : null)"
+            disabled="@Disabled" @onclick="ToggleAsync" @onkeydown="OnTriggerKeyDown" @attributes="AdditionalAttributes">
+        <span class="rn-select-value @(_selected is null ? "is-placeholder" : null)">@(_selected?.Label ?? Placeholder ?? "Choose…")</span>
+        @if (Loading)
+        {
+            <span class="rn-spinner sm" aria-hidden="true"></span>
+        }
+        <Icon Name="chevron-down" Class="rn-select-chevron" />
+    </button>
+    @if (Clearable && _selected is not null && !Disabled && !IsDefaultValue)
+    {
+        <button type="button" class="rn-select-clear" aria-label="@("Clear " + (ClearLabel ?? "selection"))" @onclick="ClearAsync"><Icon Name="x" Size="16" /></button>
+    }
+    <div class="rn-select-popup" popover="manual" id="@_popupId">
+        @if (_open)
+        {
+            @if (Searchable)
+            {
+                <div class="rn-select-search-wrap">
+                    <Icon Name="search" Size="16" />
+                    @* Deliberately not bound to _filter: writing the (slightly behind) server value back while someone types
+                       would drop keystrokes. The box is created empty each time the list opens. *@
+                    <input type="text" class="rn-select-search" placeholder="@SearchPlaceholder" aria-label="@SearchPlaceholder"
+                           aria-controls="@_listId" aria-autocomplete="list" autocomplete="off" spellcheck="false"
+                           @oninput="OnFilterInput" />
+                </div>
+            }
+        }
+        <ul role="listbox" id="@_listId" class="rn-select-list" aria-label="@(AriaLabel ?? Placeholder)" aria-labelledby="@AriaLabelledBy" tabindex="-1">
+            @if (_open)
+            {
+                @foreach (var option in _visible)
+                {
+                    // The index into the full option list stays the same while filtering, so a key press that races a
+                    // filter update still selects the option the user saw highlighted.
+                    var index = _indexes[option];
+                    var isSelected = ReferenceEquals(option, _selected);
+                    <li @key="index" role="option" id="@(_listId + "-" + index)" class="rn-select-option @(isSelected ? "is-selected" : null)"
+                        aria-selected="@(isSelected ? "true" : "false")" aria-disabled="@(option.Disabled ? "true" : null)"
+                        data-label="@option.Label" data-index="@index" @onclick="() => SelectAsync(index)" @onmousedown:preventDefault>
+                        <span class="rn-select-option-text">
+                            <span>@option.Label</span>
+                            @if (option.Hint is not null)
+                            {
+                                <span class="rn-select-hint">@option.Hint</span>
+                            }
+                        </span>
+                        @if (isSelected)
+                        {
+                            <Icon Name="check" Class="rn-select-check" Size="18" />
+                        }
+                    </li>
+                }
+            }
+        </ul>
+        @if (_open && Loading)
+        {
+            <div class="rn-select-state" role="status"><span class="rn-spinner sm" aria-hidden="true"></span>Loading…</div>
+        }
+        else if (_open && _visible.Count == 0)
+        {
+            <div class="rn-select-state" role="status">@(string.IsNullOrEmpty(_filter) ? EmptyText : "No matches for “" + _filter + "”")</div>
+        }
+    </div>
+</div>
+
+@code {
+    private readonly string _listId = "sel-" + Guid.NewGuid().ToString("N")[..10];
+    private string _popupId => _listId + "-popup";
+    private ElementReference _root;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<AppSelect<TValue>>? _self;
+    private List<SelectOption<TValue>> _options = [];
+    private List<SelectOption<TValue>> _visible = [];
+    private Dictionary<SelectOption<TValue>, int> _indexes = new(ReferenceEqualityComparer.Instance);
+    private SelectOption<TValue>? _selected;
+    private FieldIdentifier? _field;
+    private bool _open;
+    private string _filter = "";
+    private PendingJs _pending;
+    private bool _restoreFocus;
+
+    private enum PendingJs
+    {
+        None,
+        Open,
+        Close,
+        Refresh,
+    }
+
+    [CascadingParameter] private EditContext? EditContext { get; set; }
+
+    [Parameter, EditorRequired] public IEnumerable<SelectOption<TValue>> Options { get; set; } = [];
+    [Parameter] public TValue? Value { get; set; }
+    [Parameter] public EventCallback<TValue?> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<TValue?>>? ValueExpression { get; set; }
+
+    /// <summary>Shown when the value matches no option.</summary>
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Searchable { get; set; }
+    [Parameter] public string SearchPlaceholder { get; set; } = "Type to filter";
+    [Parameter] public bool Clearable { get; set; }
+    [Parameter] public string? ClearLabel { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string EmptyText { get; set; } = "No options";
+
+    /// <summary>Id of the trigger button, for &lt;label for&gt;.</summary>
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? AriaLabelledBy { get; set; }
+    [Parameter] public string? AriaDescribedBy { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Shows the invalid state when the caller validates without an EditForm.</summary>
+    [Parameter] public bool Invalid { get; set; }
+
+    /// <summary>"sm" for compact toolbars; default otherwise.</summary>
+    [Parameter] public string? Size { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)] public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string TriggerId => Id ?? _listId + "-trigger";
+
+    private string? SizeClass => Size == "sm" ? "sm" : null;
+
+    private bool IsInvalid => Invalid || (_field is { } id && EditContext is not null && EditContext.GetValidationMessages(id).Any());
+
+    private bool IsDefaultValue => EqualityComparer<TValue>.Default.Equals(Value, default);
+
+    protected override void OnParametersSet()
+    {
+        _options = Options as List<SelectOption<TValue>> ?? Options.ToList();
+        _indexes = new Dictionary<SelectOption<TValue>, int>(ReferenceEqualityComparer.Instance);
+        for (var i = 0; i < _options.Count; i++)
+        {
+            _indexes.TryAdd(_options[i], i);
+        }
+        _selected = _options.FirstOrDefault(o => EqualityComparer<TValue>.Default.Equals(o.Value, Value));
+        _field = ValueExpression is not null ? FieldIdentifier.Create(ValueExpression) : null;
+        Filter();
+        if (_open)
+        {
+            _pending = PendingJs.Refresh;
+        }
+
+        if (Disabled && _open)
+        {
+            _open = false;
+            _pending = PendingJs.Close;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            if (firstRender)
+            {
+                // _module is set only once the key handlers are attached, so OnTriggerKeyDown covers the gap.
+                var module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/select.js");
+                _self = DotNetObjectReference.Create(this);
+                await module.InvokeVoidAsync("init", _root, _self);
+                _module = module;
+            }
+
+            if (_module is null || _pending == PendingJs.None)
+            {
+                return;
+            }
+
+            var pending = _pending;
+            _pending = PendingJs.None;
+            switch (pending)
+            {
+                case PendingJs.Open:
+                    await _module.InvokeVoidAsync("open", _root);
+                    break;
+                case PendingJs.Refresh:
+                    await _module.InvokeVoidAsync("refresh", _root);
+                    break;
+                case PendingJs.Close:
+                    await _module.InvokeVoidAsync("close", _root, _restoreFocus);
+                    break;
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (JSException)
+        {
+            // Keyboard and placement helpers are progressive enhancements; clicking still works.
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    private void ToggleAsync()
+    {
+        if (_open)
+        {
+            Close(restoreFocus: true);
+        }
+        else
+        {
+            Open();
+        }
+    }
+
+    /// <summary>Until js/select.js has loaded (the first moments after render), arrow keys still open the list.</summary>
+    private void OnTriggerKeyDown(KeyboardEventArgs e)
+    {
+        if (_module is null && !_open && e.Key is "ArrowDown" or "ArrowUp")
+        {
+            Open();
+        }
+    }
+
+    private void Open()
+    {
+        if (Disabled || _open)
+        {
+            return;
+        }
+
+        _filter = "";
+        Filter();
+        _open = true;
+        _pending = PendingJs.Open;
+    }
+
+    private void Close(bool restoreFocus)
+    {
+        if (!_open)
+        {
+            return;
+        }
+
+        _open = false;
+        _restoreFocus = restoreFocus;
+        _pending = PendingJs.Close;
+    }
+
+    [JSInvokable]
+    public Task OpenFromKeyboard() => InvokeAsync(() =>
+    {
+        Open();
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public Task CloseFromKeyboard(bool restoreFocus) => InvokeAsync(() =>
+    {
+        Close(restoreFocus);
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public Task CloseFromOutside() => InvokeAsync(() =>
+    {
+        Close(restoreFocus: false);
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public Task SelectIndex(int index) => InvokeAsync(() => SelectAsync(index));
+
+    /// <param name="index">Index into the full option list (not the filtered one).</param>
+    private async Task SelectAsync(int index)
+    {
+        if (index < 0 || index >= _options.Count || _options[index].Disabled)
+        {
+            return;
+        }
+
+        var option = _options[index];
+        Close(restoreFocus: true);
+        await SetValueAsync(option.Value);
+    }
+
+    private async Task ClearAsync()
+    {
+        Close(restoreFocus: false);
+        await SetValueAsync(default);
+    }
+
+    private async Task SetValueAsync(TValue? value)
+    {
+        if (!EqualityComparer<TValue>.Default.Equals(value, Value))
+        {
+            Value = value;
+            _selected = _options.FirstOrDefault(o => EqualityComparer<TValue>.Default.Equals(o.Value, value));
+            await ValueChanged.InvokeAsync(value);
+            if (_field is { } id)
+            {
+                EditContext?.NotifyFieldChanged(id);
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private void OnFilterInput(ChangeEventArgs e)
+    {
+        _filter = e.Value?.ToString() ?? "";
+        Filter();
+        _pending = PendingJs.Refresh;
+    }
+
+    private void Filter()
+    {
+        var term = _filter.Trim();
+        _visible = Searchable && term.Length > 0
+            ? _options.Where(o => o.Label.Contains(term, StringComparison.CurrentCultureIgnoreCase)).ToList()
+            : _options;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync("dispose", _root);
+                await _module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (JSException)
+        {
+        }
+        catch (TaskCanceledException)
+        {
+        }
+
+        _self?.Dispose();
+    }
+}

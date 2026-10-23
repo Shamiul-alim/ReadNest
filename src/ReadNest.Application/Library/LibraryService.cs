@@ -12,7 +12,7 @@ namespace ReadNest.Application.Library;
 /// The personal library. Every method takes the authenticated user's id (resolved by the web layer from the
 /// validated identity) and every query is filtered by it, so entries of other users behave as "not found".
 /// </summary>
-public sealed class LibraryService(IReadNestDbContextFactory dbFactory, BookCatalogImporter importer, UserClock clock)
+public sealed class LibraryService(IReadNestDbContextFactory dbFactory, BookCatalogImporter importer, UserClock clock, IFileStore files)
 {
     public async Task<PagedResult<LibraryEntryDto>> ListAsync(Guid userId, LibraryQuery query, CancellationToken cancellationToken)
     {
@@ -178,7 +178,8 @@ public sealed class LibraryService(IReadNestDbContextFactory dbFactory, BookCata
     }
 
     /// <summary>
-    /// Permanently removes a library entry with its sessions, notes, review, shelf placements and loan history.
+    /// Permanently removes a library entry with its sessions, notes, review, shelf placements, loan history and
+    /// attached reading file.
     /// The shared catalogue record is never deleted. Removal is refused while the book is lent out.
     /// </summary>
     public async Task RemoveAsync(Guid userId, Guid entryId, CancellationToken cancellationToken)
@@ -194,8 +195,14 @@ public sealed class LibraryService(IReadNestDbContextFactory dbFactory, BookCata
             throw new ConflictException("This book is currently lent out. Mark the loan as returned before removing it from your library.");
         }
 
+        // The reading file row is removed with the entry (cascade); its stored file is deleted afterwards.
+        var fileKey = await db.ReadingFiles.Where(f => f.UserBookId == entry.Id).Select(f => f.StorageKey).FirstOrDefaultAsync(cancellationToken);
         db.UserBooks.Remove(entry);
         await db.SaveChangesAsync(cancellationToken);
+        if (fileKey is not null)
+        {
+            await files.DeleteAsync(fileKey, CancellationToken.None);
+        }
     }
 
     /// <summary>The reader's current local date (based on the time zone in their profile).</summary>

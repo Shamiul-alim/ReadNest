@@ -10,7 +10,8 @@ internal sealed class IdentityRedirectManager(NavigationManager navigationManage
 
     private static readonly CookieBuilder StatusCookieBuilder = new()
     {
-        SameSite = SameSiteMode.Strict,
+        // Lax, not Strict: the message must survive the redirect back from an external sign-in provider.
+        SameSite = SameSiteMode.Lax,
         HttpOnly = true,
         IsEssential = true,
         MaxAge = TimeSpan.FromSeconds(5),

@@ -112,13 +112,10 @@
             {
                 <div class="rn-menu-wrap">
                     <button type="button" class="rn-avatar-button" aria-label="Account menu" aria-haspopup="true" aria-expanded="false" aria-controls="rn-account-menu" data-menu-toggle>
+                        <span class="rn-avatar-initials">@Initials</span>
                         @if (AvatarUrl is not null)
                         {
                             <img src="@AvatarUrl" alt="" referrerpolicy="no-referrer" />
-                        }
-                        else
-                        {
-                            @Initials
                         }
                     </button>
                     <div class="rn-popover" id="rn-account-menu" data-menu hidden>
@@ -219,7 +216,7 @@
     private ProfileDto? _profile;
     private StatusCountsDto? _counts;
 
-    private string? AvatarUrl => InputSanitizer.SafeExternalUrl(_profile?.ProfileImageUrl);
+    private string? AvatarUrl => Avatar.SafeImageUrl(_profile?.ProfileImageUrl);
 
     private string Initials => Avatar.InitialsFor(_profile?.DisplayName);
 

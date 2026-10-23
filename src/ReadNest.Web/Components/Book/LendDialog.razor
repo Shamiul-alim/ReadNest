@@ -21,13 +21,9 @@
                     }
                     else
                     {
-                        <select id="@(_formId + "-book")" class="rn-select @(_attempted && _entry is null ? "invalid" : null)" @bind="_entry">
-                            <option value="">Choose a book you own…</option>
-                            @foreach (var item in _available)
-                            {
-                                <option value="@item.EntryId">@item.Title</option>
-                            }
-                        </select>
+                        <AppSelect TValue="Guid?" Id="@(_formId + "-book")" @bind-Value="_entry" Invalid="@(_attempted && _entry is null)"
+                                   Placeholder="Choose a book you own…" Searchable="@(_available.Count > 8)" SearchPlaceholder="Find a book"
+                                   Options="@(_available.Select(i => SelectOption.Of<Guid?>(i.EntryId, i.Title)).ToList())" />
                     }
                 </div>
             }

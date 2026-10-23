@@ -69,6 +69,22 @@ public static class RateLimitPolicies
 
 public static class SecurityHeaders
 {
+    // blob:/data: sources are for the in-browser readers: PDF.js renders fonts from data, and epub.js shows a
+    // book's images, styles and fonts from blob URLs inside a sandboxed iframe (no scripts) on ReadNest's origin.
+    private const string DefaultPolicy =
+        "default-src 'self'; img-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' blob:; " +
+        "script-src 'self' 'unsafe-inline'; connect-src 'self'; font-src 'self' data: blob:; worker-src 'self' blob:; " +
+        "frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
+    // The Google Books embedded viewer page loads Google's viewer script, which then loads more script and a frame
+    // from Google's regional domains (books.google.com redirects to books.google.<country>), so this page alone allows
+    // https sources. It shows no user content apart from an HTML-encoded title, and keeps object-src, base-uri,
+    // form-action and frame-ancestors locked down.
+    private const string GoogleViewerPolicy =
+        "default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline' https:; " +
+        "script-src 'self' 'unsafe-inline' https:; connect-src 'self' https:; font-src 'self' https:; " +
+        "frame-src https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
     /// <summary>
     /// Conservative security headers. The CSP allows inline scripts because Blazor emits an inline import map;
     /// tightening it with nonces is listed as a deployment hardening task in the README.
@@ -83,10 +99,7 @@ public static class SecurityHeaders
             headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()";
             if (!context.Request.Path.StartsWithSegments("/scalar"))
             {
-                headers.ContentSecurityPolicy =
-                    "default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; " +
-                    "script-src 'self' 'unsafe-inline'; connect-src 'self'; font-src 'self'; object-src 'none'; " +
-                    "base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+                headers.ContentSecurityPolicy = context.Request.Path.StartsWithSegments("/reader/google") ? GoogleViewerPolicy : DefaultPolicy;
             }
 
             await next();

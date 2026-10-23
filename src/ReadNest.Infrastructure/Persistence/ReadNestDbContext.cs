@@ -47,6 +47,8 @@ public sealed class ReadNestDbContext(DbContextOptions<ReadNestDbContext> option
 
     public DbSet<RecommendationDismissal> RecommendationDismissals => Set<RecommendationDismissal>();
 
+    public DbSet<ReadingFile> ReadingFiles => Set<ReadingFile>();
+
     public bool IsUniqueViolation(DbUpdateException exception) =>
         exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
@@ -73,5 +75,10 @@ public sealed class ReadNestDbContext(DbContextOptions<ReadNestDbContext> option
         configurationBuilder.Properties<Domain.Enums.ReviewVisibility>().HaveConversion<string>().HaveMaxLength(32);
         configurationBuilder.Properties<Domain.Enums.CatalogProvider>().HaveConversion<string>().HaveMaxLength(32);
         configurationBuilder.Properties<Domain.Enums.BookOrigin>().HaveConversion<string>().HaveMaxLength(32);
+        configurationBuilder.Properties<Domain.Enums.ReadingFileFormat>().HaveConversion<string>().HaveMaxLength(16);
+        configurationBuilder.Properties<Domain.Enums.ReadingFileSource>().HaveConversion<string>().HaveMaxLength(32);
+        configurationBuilder.Properties<Domain.Enums.ReaderTheme>().HaveConversion<string>().HaveMaxLength(16);
+        configurationBuilder.Properties<Domain.Enums.ReaderWidth>().HaveConversion<string>().HaveMaxLength(16);
+        configurationBuilder.Properties<Domain.Enums.ReaderFlow>().HaveConversion<string>().HaveMaxLength(16);
     }
 }

@@ -1,4 +1,4 @@
-@page "/Account/Login"
+﻿@page "/Account/Login"
 
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Authentication
@@ -17,7 +17,8 @@
     <h1>Welcome back</h1>
     <p class="rn-auth-sub">Sign in to pick up where you left off.</p>
 </div>
-<StatusMessage Message="@errorMessage" />
+<StatusMessage Message="@(errorMessage ?? ExternalMessage)" />
+<GoogleSignInButton ReturnUrl="@ReturnUrl" />
 <EditForm EditContext="editContext" method="post" OnSubmit="LoginUser" FormName="login" class="rn-form" novalidate>
     <DataAnnotationsValidator />
     <div class="rn-field">
@@ -63,6 +64,20 @@
 
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
+
+    /// <summary>Set by the Google sign-in flow when it returns here; mapped to fixed messages, never echoed.</summary>
+    [SupplyParameterFromQuery(Name = "external")]
+    private string? External { get; set; }
+
+    private string? ExternalMessage => External switch
+    {
+        "cancelled" => "Error: Google sign-in was cancelled. You can try again, or sign in with your email.",
+        "failed" => "Error: We couldn't complete sign-in with Google. Please try again.",
+        "expired" => "Error: Your Google sign-in took too long and expired. Please try again.",
+        "no-email" => "Error: Google didn't share an email address, so we couldn't sign you in.",
+        "unverified" => "Error: Your Google account's email address isn't verified. Verify it with Google, or sign in with your email.",
+        _ => null,
+    };
 
     protected override async Task OnInitializedAsync()
     {

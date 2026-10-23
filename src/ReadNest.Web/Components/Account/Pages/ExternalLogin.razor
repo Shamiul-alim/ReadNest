@@ -2,53 +2,79 @@
 
 @using System.ComponentModel.DataAnnotations
 @using System.Security.Claims
-@using System.Text
-@using System.Text.Encodings.Web
+@using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Identity
-@using Microsoft.AspNetCore.WebUtilities
 @using ReadNest.Infrastructure.Identity
+@using ReadNest.Web.Configuration
 
 @inject SignInManager<ApplicationUser> SignInManager
 @inject UserManager<ApplicationUser> UserManager
 @inject IUserStore<ApplicationUser> UserStore
-@inject IEmailSender<ApplicationUser> EmailSender
-@inject NavigationManager NavigationManager
 @inject IdentityRedirectManager RedirectManager
 @inject ILogger<ExternalLogin> Logger
+@inject ReadNest.Application.Social.ProfileService Profiles
 
-<PageTitle>Register</PageTitle>
+<PageTitle>@(_state == PageState.ExistingAccount ? "Sign in to connect Google" : "Finish signing up") · ReadNest</PageTitle>
 
-<StatusMessage Message="@message" />
-<h1>Register</h1>
-<h2>Associate your @ProviderDisplayName account.</h2>
-<hr />
-
-<div  class="alert alert-info">
-    You've successfully authenticated with <strong>@ProviderDisplayName</strong>.
-    Please enter an email address for this site below and click the Register button to finish
-    logging in.
-</div>
-
-<div class="row">
-    <div class="col-md-4">
-        <EditForm Model="Input" OnValidSubmit="OnValidSubmitAsync" FormName="confirmation" method="post">
-            <DataAnnotationsValidator />
-            <ValidationSummary class="text-danger" role="alert" />
-            <div class="form-floating mb-3">
-                <InputText @bind-Value="Input.Email" id="Input.Email" class="form-control" autocomplete="email" placeholder="Please enter your email." />
-                <label for="Input.Email" class="form-label">Email</label>
-                <ValidationMessage For="() => Input.Email" />
-            </div>
-            <button type="submit" class="w-100 btn btn-lg btn-primary">Register</button>
-        </EditForm>
+@if (_state == PageState.ExistingAccount)
+{
+    <div style="display:flex; flex-direction:column; gap:8px">
+        <h1>You already have an account</h1>
+        <p class="rn-auth-sub">
+            <strong>@_email</strong> is already registered with ReadNest. For your security we don't connect a Google
+            sign-in to an existing account automatically.
+        </p>
     </div>
-</div>
+    <ol class="rn-numbered">
+        <li>Sign in with your email and password.</li>
+        <li>Open <strong>Settings → Account → Connected sign-ins</strong> and choose <strong>Connect Google</strong>.</li>
+        <li>From then on, “Continue with Google” signs you straight in.</li>
+    </ol>
+    <a class="rn-btn rn-btn-primary rn-btn-block" style="min-height:50px; font-size:16px" href="Account/Login">Sign in with email</a>
+    <p class="rn-subtle rn-mb-0">Forgot your password? <a href="Account/ForgotPassword">Reset it</a>.</p>
+}
+else if (_state == PageState.Confirm)
+{
+    <div style="display:flex; flex-direction:column; gap:8px">
+        <h1>Finish signing up</h1>
+        <p class="rn-auth-sub">You're signing up with your Google account. Choose the name other readers will see.</p>
+    </div>
+    <StatusMessage Message="@_message" />
+    <EditForm Model="Input" OnValidSubmit="OnValidSubmitAsync" FormName="external-confirmation" method="post" class="rn-form" novalidate>
+        <DataAnnotationsValidator />
+        <div class="rn-field">
+            <span class="rn-label">Google account</span>
+            <div class="rn-google-identity"><GoogleMark /><span>@_email</span></div>
+            <span class="rn-hint">Your ReadNest account uses this address. It comes from Google and can't be changed here.</span>
+        </div>
+        <div class="rn-field">
+            <label for="Input.DisplayName" class="rn-label">Your name</label>
+            <InputText @bind-Value="Input.DisplayName" id="Input.DisplayName" class="rn-input" autocomplete="name" aria-required="true" />
+            <ValidationMessage For="() => Input.DisplayName" />
+        </div>
+        <input type="hidden" name="Input.TimeZone" value="@Input.TimeZone" data-timezone />
+        <button type="submit" class="rn-btn rn-btn-primary rn-btn-block" style="min-height:50px; font-size:16px">Create my library</button>
+    </EditForm>
+    <div class="rn-auth-alt">
+        <span>Not you?</span>
+        <a href="Account/Login">Use a different account</a>
+    </div>
+}
 
 @code {
     public const string LoginCallbackAction = "LoginCallback";
 
-    private string? message;
-    private ExternalLoginInfo? externalLoginInfo;
+    private enum PageState
+    {
+        Redirecting,
+        Confirm,
+        ExistingAccount,
+    }
+
+    private PageState _state = PageState.Redirecting;
+    private string? _message;
+    private string? _email;
+    private ExternalLoginInfo? _info;
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
@@ -65,7 +91,7 @@
     [SupplyParameterFromQuery]
     private string? Action { get; set; }
 
-    private string? ProviderDisplayName => externalLoginInfo?.ProviderDisplayName;
+    private string Destination => string.IsNullOrEmpty(ReturnUrl) ? "dashboard" : ReturnUrl;
 
     protected override async Task OnInitializedAsync()
     {
@@ -73,18 +99,31 @@
 
         if (RemoteError is not null)
         {
-            RedirectManager.RedirectToWithStatus("Account/Login", $"Error from external provider: {RemoteError}", HttpContext);
+            Logger.LogWarning("External login returned an error.");
+            ToLogin("failed");
             return;
         }
 
-        var info = await SignInManager.GetExternalLoginInfoAsync();
-        if (info is null)
+        _info = await SignInManager.GetExternalLoginInfoAsync();
+        if (_info is null)
         {
-            RedirectManager.RedirectToWithStatus("Account/Login", "Error loading external login information.", HttpContext);
+            ToLogin("expired");
             return;
         }
 
-        externalLoginInfo = info;
+        // The email always comes from the provider's verified identity, never from the form.
+        _email = _info.Principal.FindFirstValue(ClaimTypes.Email)?.Trim();
+        if (string.IsNullOrEmpty(_email))
+        {
+            ToLogin("no-email");
+            return;
+        }
+
+        if (string.Equals(_info.Principal.FindFirstValue(GoogleAuthentication.EmailVerifiedClaim), "false", StringComparison.OrdinalIgnoreCase))
+        {
+            ToLogin("unverified");
+            return;
+        }
 
         if (HttpMethods.IsGet(HttpContext.Request.Method))
         {
@@ -94,124 +133,108 @@
                 return;
             }
 
-            // We should only reach this page via the login callback, so redirect back to
-            // the login page if we get here some other way.
+            // This page is only reached through the provider callback.
             RedirectManager.RedirectTo("Account/Login");
+            return;
         }
+
+        // Form post: re-check that nobody registered this address in the meantime.
+        _state = await UserManager.FindByEmailAsync(_email) is null ? PageState.Confirm : PageState.ExistingAccount;
     }
 
     private async Task OnLoginCallbackAsync()
     {
-        if (externalLoginInfo is null)
-        {
-            RedirectManager.RedirectToWithStatus("Account/Login", "Error loading external login information.", HttpContext);
-            return;
-        }
-
-        // Sign in the user with this external login provider if the user already has a login.
-        var result = await SignInManager.ExternalLoginSignInAsync(
-            externalLoginInfo.LoginProvider,
-            externalLoginInfo.ProviderKey,
-            isPersistent: false,
-            bypassTwoFactor: true);
-
+        // An account that has already connected this Google identity signs straight in.
+        var result = await SignInManager.ExternalLoginSignInAsync(_info!.LoginProvider, _info.ProviderKey, isPersistent: false, bypassTwoFactor: true);
         if (result.Succeeded)
         {
-            Logger.LogInformation(
-                "{Name} logged in with {LoginProvider} provider.",
-                externalLoginInfo.Principal.Identity?.Name,
-                externalLoginInfo.LoginProvider);
-            RedirectManager.RedirectTo(ReturnUrl);
+            Logger.LogInformation("User signed in with {LoginProvider}.", _info.LoginProvider);
+            await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+            RedirectManager.RedirectTo(Destination);
             return;
         }
-        else if (result.IsLockedOut)
+
+        if (result.IsLockedOut)
         {
             RedirectManager.RedirectTo("Account/Lockout");
             return;
         }
 
-        // If the user does not have an account, then ask the user to create an account.
-        if (externalLoginInfo.Principal.HasClaim(c => c.Type == ClaimTypes.Email))
+        if (result.IsNotAllowed)
         {
-            Input.Email = externalLoginInfo.Principal.FindFirstValue(ClaimTypes.Email) ?? "";
+            RedirectManager.RedirectToWithStatus("Account/Login", "Error: Confirm your email address before signing in.", HttpContext);
+            return;
         }
+
+        // No connected account. An existing account with the same email is never linked automatically: the owner
+        // must sign in and connect Google from their account settings.
+        if (await UserManager.FindByEmailAsync(_email!) is not null)
+        {
+            _state = PageState.ExistingAccount;
+            return;
+        }
+
+        Input.DisplayName = SuggestedName(_info.Principal, _email!);
+        _state = PageState.Confirm;
     }
 
     private async Task OnValidSubmitAsync()
     {
-        if (externalLoginInfo is null)
+        if (_info is null || _email is null || _state != PageState.Confirm)
         {
-            RedirectManager.RedirectToWithStatus("Account/Login", "Error loading external login information during confirmation.", HttpContext);
             return;
         }
 
-        var emailStore = GetEmailStore();
-        var user = CreateUser();
+        var user = new ApplicationUser();
+        await UserStore.SetUserNameAsync(user, _email, CancellationToken.None);
+        await ((IUserEmailStore<ApplicationUser>)UserStore).SetEmailAsync(user, _email, CancellationToken.None);
 
-        await UserStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
-        await emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
+        // Google only signs in accounts whose address it has verified (checked above).
+        user.EmailConfirmed = true;
 
         var result = await UserManager.CreateAsync(user);
         if (result.Succeeded)
         {
-            result = await UserManager.AddLoginAsync(user, externalLoginInfo);
-            if (result.Succeeded)
+            result = await UserManager.AddLoginAsync(user, _info);
+            if (!result.Succeeded)
             {
-                Logger.LogInformation("User created an account using {Name} provider.", externalLoginInfo.LoginProvider);
-
-                var userId = await UserManager.GetUserIdAsync(user);
-                var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
-                code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-
-                var callbackUrl = NavigationManager.GetUriWithQueryParameters(
-                    NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
-                    new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code });
-                await EmailSender.SendConfirmationLinkAsync(user, Input.Email, HtmlEncoder.Default.Encode(callbackUrl));
-
-                // If account confirmation is required, we need to show the link if we don't have a real email sender
-                if (UserManager.Options.SignIn.RequireConfirmedAccount)
-                {
-                    RedirectManager.RedirectTo("Account/RegisterConfirmation", new() { ["email"] = Input.Email });
-                }
-                else
-                {
-                    await SignInManager.SignInAsync(user, isPersistent: false, externalLoginInfo.LoginProvider);
-                    RedirectManager.RedirectTo(ReturnUrl);
-                }
+                await UserManager.DeleteAsync(user);
             }
         }
-        else
+
+        if (!result.Succeeded)
         {
-            message = $"Error: {string.Join(",", result.Errors.Select(error => error.Description))}";
+            _message = result.Errors.Any(e => e.Code is "DuplicateEmail" or "DuplicateUserName" or "LoginAlreadyAssociated")
+                ? "Error: An account with this email or Google login already exists. Sign in instead."
+                : "Error: We couldn't create your account. Please try again.";
+            return;
         }
+
+        Logger.LogInformation("User created an account using {LoginProvider}.", _info.LoginProvider);
+        await Profiles.GetOrCreateAsync(user.Id, Input.DisplayName, Input.TimeZone, CancellationToken.None);
+        await SignInManager.SignInAsync(user, isPersistent: false, _info.LoginProvider);
+        await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+        RedirectManager.RedirectTo(Destination);
     }
 
-    private ApplicationUser CreateUser()
-    {
-        try
-        {
-            return Activator.CreateInstance<ApplicationUser>();
-        }
-        catch
-        {
-            throw new InvalidOperationException($"Can't create an instance of '{nameof(ApplicationUser)}'. " +
-                $"Ensure that '{nameof(ApplicationUser)}' is not an abstract class and has a parameterless constructor");
-        }
-    }
+    private void ToLogin(string reason) =>
+        RedirectManager.RedirectTo("Account/Login", new() { ["external"] = reason, ["ReturnUrl"] = ReturnUrl });
 
-    private IUserEmailStore<ApplicationUser> GetEmailStore()
+    private static string SuggestedName(ClaimsPrincipal principal, string email)
     {
-        if (!UserManager.SupportsUserEmail)
-        {
-            throw new NotSupportedException("The default UI requires a user store with email support.");
-        }
-        return (IUserEmailStore<ApplicationUser>)UserStore;
+        var name = principal.FindFirstValue(ClaimTypes.Name) ?? principal.FindFirstValue(ClaimTypes.GivenName) ?? email.Split('@')[0];
+        name = name.Trim();
+        return name.Length > 80 ? name[..80] : name;
     }
 
     private sealed class InputModel
     {
         [Required]
-        [EmailAddress]
-        public string Email { get; set; } = "";
+        [StringLength(80, MinimumLength = 1)]
+        [Display(Name = "Your name")]
+        public string DisplayName { get; set; } = "";
+
+        [StringLength(64)]
+        public string? TimeZone { get; set; }
     }
 }

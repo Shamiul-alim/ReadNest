@@ -10,6 +10,7 @@
 @using ReadNest.Application.Library
 @using ReadNest.Web.Components.Book
 @inject LibraryService Library
+@inject ReadNest.Application.Reading.ReadingFileService ReadingFiles
 
 <AppTitle Text="@(View.Status is null ? "My library" : View.Label)" />
 
@@ -67,17 +68,10 @@ else
                 </form>
                 <div style="flex:1 1 auto; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); flex-wrap:wrap">
                     <div style="display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap">
-                        <label class="rn-sort">
-                            Sort
-                            <select class="rn-select" value="@_sort" @onchange="OnSortChanged">
-                                <option value="@LibrarySort.DateAdded">Recently added</option>
-                                <option value="@LibrarySort.LastUpdated">Recently updated</option>
-                                <option value="@LibrarySort.Title">Title</option>
-                                <option value="@LibrarySort.Author">Author</option>
-                                <option value="@LibrarySort.CompletedOn">Date finished</option>
-                                <option value="@LibrarySort.Rating">Rating</option>
-                            </select>
-                        </label>
+                        <div class="rn-sort">
+                            <span id="lib-sort-label">Sort</span>
+                            <AppSelect TValue="LibrarySort" Id="lib-sort" Class="auto" Size="sm" AriaLabelledBy="lib-sort-label" Value="_sort" ValueChanged="OnSortChanged" Options="SortOptions" />
+                        </div>
                         <button type="button" class="rn-btn rn-btn-ghost muted" aria-expanded="@(_filtersOpen ? "true" : "false")" @onclick="() => _filtersOpen = !_filtersOpen">
                             <Icon Name="sliders" />Filters@(ActiveFilterCount > 0 ? " · " + ActiveFilterCount : "")
                         </button>
@@ -93,33 +87,17 @@ else
                 <form class="rn-card tight" style="flex-direction:row; flex-wrap:wrap; align-items:flex-end; gap:12px" @onsubmit="ApplyFilters" @onsubmit:preventDefault aria-label="Filter your library">
                     <div class="rn-field" style="flex:1 1 180px">
                         <label class="rn-label" for="lib-genre">Subject</label>
-                        <select id="lib-genre" class="rn-select" @bind="_genre">
-                            <option value="">All subjects</option>
-                            @foreach (var genre in _options?.Genres ?? [])
-                            {
-                                <option value="@genre">@genre</option>
-                            }
-                        </select>
+                        <AppSelect TValue="string" Id="lib-genre" @bind-Value="_genre" Loading="@(_options is null)" Searchable="@((_options?.Genres.Count ?? 0) > 10)" SearchPlaceholder="Find a subject"
+                                   Options="@([SelectOption.Of("", "All subjects"), .. (_options?.Genres ?? []).Select(g => SelectOption.Of(g, g))])" />
                     </div>
                     <div class="rn-field" style="flex:1 1 180px">
                         <label class="rn-label" for="lib-author">Author</label>
-                        <select id="lib-author" class="rn-select" @bind="_author">
-                            <option value="">All authors</option>
-                            @foreach (var author in _options?.Authors ?? [])
-                            {
-                                <option value="@author">@author</option>
-                            }
-                        </select>
+                        <AppSelect TValue="string" Id="lib-author" @bind-Value="_author" Loading="@(_options is null)" Searchable="@((_options?.Authors.Count ?? 0) > 10)" SearchPlaceholder="Find an author"
+                                   Options="@([SelectOption.Of("", "All authors"), .. (_options?.Authors ?? []).Select(a => SelectOption.Of(a, a))])" />
                     </div>
                     <div class="rn-field" style="flex:1 1 150px">
                         <label class="rn-label" for="lib-rating">Your rating</label>
-                        <select id="lib-rating" class="rn-select" @bind="_minRating">
-                            <option value="0">Any</option>
-                            <option value="5">5 stars</option>
-                            <option value="4">4 stars and up</option>
-                            <option value="3">3 stars and up</option>
-                            <option value="1">Rated at all</option>
-                        </select>
+                        <AppSelect TValue="int" Id="lib-rating" @bind-Value="_minRating" Options="RatingOptions" />
                     </div>
                     <label class="rn-check" style="align-self:center"><input type="checkbox" @bind="_favorites" /><span>Favourites only</span></label>
                     <div class="rn-actions" style="margin-left:auto">
@@ -139,13 +117,8 @@ else
                 <strong>@Formats.Count(_selected.Count, "book") selected</strong>
                 <div class="spacer"></div>
                 <button type="button" @onclick="() => _shelfOpen = true"><Icon Name="layers" />Add to shelf</button>
-                <select aria-label="Change status of selected books" value="" @onchange="BulkStatusAsync" @key="_bulkKey">
-                    <option value="">Change status…</option>
-                    @foreach (var status in Enum.GetValues<ReadingStatus>())
-                    {
-                        <option value="@status">@status.ToDisplayName()</option>
-                    }
-                </select>
+                <AppSelect TValue="ReadingStatus?" Class="auto" Size="sm" AriaLabel="Change status of selected books" Placeholder="Change status…"
+                           Value="null" ValueChanged="BulkStatusAsync" Options="BulkStatusOptions" @key="_bulkKey" />
                 <button type="button" @onclick="BulkRemoveAsync"><Icon Name="trash" />Remove</button>
                 <button type="button" class="close" aria-label="Clear selection" @onclick="() => _selected.Clear()"><Icon Name="x" /></button>
             </div>
@@ -186,6 +159,10 @@ else
                             <div class="rn-list-body">
                                 <a class="rn-list-title" href="@("books/" + entry.BookId)">@entry.Title</a>
                                 <span class="rn-subtle">@Authors(entry.Authors)</span>
+                                @if (_withFiles.Contains(entry.Id))
+                                {
+                                    <a class="rn-file-link" href="@("reader/" + entry.Id)"><Icon Name="book-open" Size="14" />Read in ReadNest</a>
+                                }
                             </div>
                         </div>
                         <div style="flex:0 0 170px"><StatusBadge Status="entry.Status" /></div>
@@ -207,7 +184,7 @@ else
             <div class="rn-book-grid" role="list" style="margin-top:var(--space-2)">
                 @foreach (var entry in _result.Items)
                 {
-                    <LibraryBookCard Entry="entry" @key="entry.Id" />
+                    <LibraryBookCard Entry="entry" HasFile="@_withFiles.Contains(entry.Id)" @key="entry.Id" />
                 }
             </div>
             <Pager Page="_result.Page" TotalPages="_result.TotalPages" TotalCount="_result.TotalCount" ItemName="books" OnPageChanged="GoToPage" />
@@ -241,6 +218,7 @@ else
     [SupplyParameterFromQuery(Name = "page")] public int? PageNumber { get; set; }
 
     private Guid _userId;
+    private HashSet<Guid> _withFiles = [];
     private PagedResult<LibraryEntryDto>? _result;
     private StatusCountsDto? _counts;
     private LibraryFilterOptionsDto? _options;
@@ -331,14 +309,36 @@ else
                 PageSize = 24,
             }, ComponentToken);
             _counts = await Library.GetStatusCountsAsync(_userId, ComponentToken);
+            _withFiles = await ReadingFiles.GetEntriesWithFilesAsync(_userId, ComponentToken);
         });
     }
 
     private string CountFor(LibraryView view) => _counts is null ? "" : (view.Status is { } s ? _counts.Get(s) : _counts.Total).ToString("N0", CultureInfo.CurrentCulture);
 
-    private void OnSortChanged(ChangeEventArgs e)
+    private static readonly IReadOnlyList<SelectOption<LibrarySort>> SortOptions =
+    [
+        SelectOption.Of(LibrarySort.DateAdded, "Recently added"),
+        SelectOption.Of(LibrarySort.LastUpdated, "Recently updated"),
+        SelectOption.Of(LibrarySort.Title, "Title"),
+        SelectOption.Of(LibrarySort.Author, "Author"),
+        SelectOption.Of(LibrarySort.CompletedOn, "Date finished"),
+        SelectOption.Of(LibrarySort.Rating, "Rating"),
+    ];
+
+    private static readonly IReadOnlyList<SelectOption<int>> RatingOptions =
+    [
+        SelectOption.Of(0, "Any"),
+        SelectOption.Of(5, "5 stars"),
+        SelectOption.Of(4, "4 stars and up"),
+        SelectOption.Of(3, "3 stars and up"),
+        SelectOption.Of(1, "Rated at all"),
+    ];
+
+    private static readonly IReadOnlyList<SelectOption<ReadingStatus?>> BulkStatusOptions = SelectOption.ForNullableEnum<ReadingStatus>(s => s.ToDisplayName());
+
+    private void OnSortChanged(LibrarySort sort)
     {
-        _sort = Enum.TryParse<LibrarySort>(e.Value?.ToString(), out var sort) ? sort : LibrarySort.DateAdded;
+        _sort = sort;
         Navigate(1);
     }
 
@@ -405,10 +405,10 @@ else
         await RefreshAsync();
     }
 
-    private async Task BulkStatusAsync(ChangeEventArgs e)
+    private async Task BulkStatusAsync(ReadingStatus? choice)
     {
         _bulkKey++;
-        if (!Enum.TryParse<ReadingStatus>(e.Value?.ToString(), out var status) || _selected.Count == 0)
+        if (choice is not { } status || _selected.Count == 0)
         {
             return;
         }

@@ -149,7 +149,37 @@
     document.addEventListener("error", function (event) {
         var target = event.target;
         if (target && target.tagName === "IMG" && target.classList.contains("rn-cover-img")) { target.classList.add("is-broken"); }
+        // A profile photo that can't be shown (removed, private, offline) falls back to the initials beneath it.
+        if (target && target.tagName === "IMG" && target.closest && target.closest(".rn-avatar, .rn-avatar-button")) { target.hidden = true; }
     }, true);
+
+    // ----- Google Books embedded viewer (/reader/google/...) -----
+    // Google's script is only allowed by that page's CSP, so this does nothing elsewhere.
+    function initGoogleViewer() {
+        var el = document.querySelector("[data-google-viewer]:not([data-started])");
+        if (!el) { return; }
+        el.setAttribute("data-started", "");
+        var wrap = el.closest(".rn-google-viewer-wrap");
+        var volume = el.getAttribute("data-google-viewer");
+        var failed = function () { if (wrap) { wrap.classList.remove("is-ready"); wrap.classList.add("is-failed"); } };
+        var ready = function () { if (wrap) { wrap.classList.add("is-ready"); } };
+        var timer = setTimeout(failed, 20000);
+        var start = function () {
+            try {
+                window.google.books.load();
+                window.google.books.setOnLoadCallback(function () {
+                    var viewer = new window.google.books.DefaultViewer(el);
+                    viewer.load(volume, function () { clearTimeout(timer); failed(); }, function () { clearTimeout(timer); ready(); });
+                });
+            } catch (e) { clearTimeout(timer); failed(); }
+        };
+        if (window.google && window.google.books) { start(); return; }
+        var script = document.createElement("script");
+        script.src = "https://www.google.com/books/jsapi.js";
+        script.onload = start;
+        script.onerror = function () { clearTimeout(timer); failed(); };
+        document.head.appendChild(script);
+    }
 
     // ----- Password fields: show/hide toggle and a live checklist of the server's rules -----
     function updatePasswordRules(input) {
@@ -186,6 +216,7 @@
         closeSheet(false);
         closeMenus(null);
         hideSuggestions();
+        initGoogleViewer();
     }
 
     document.addEventListener("DOMContentLoaded", afterRender);
@@ -237,6 +268,35 @@
         if (t && t.matches && t.matches("[data-search-input]")) { renderSuggestions(t); }
         if (t && t.matches && t.matches("[data-pw-rules-for]")) { updatePasswordRules(t); }
     });
+    // External sign-in buttons show progress while the browser goes to the provider. The button is disabled after
+    // the submit so its name/value is still sent, and re-enabled if the page is restored from the back cache.
+    function resetExternalButtons() {
+        document.querySelectorAll("[data-external-login] .is-loading").forEach(function (button) {
+            button.classList.remove("is-loading");
+            button.disabled = false;
+            button.removeAttribute("aria-busy");
+            var label = button.querySelector(".rn-google-label");
+            if (label && button.dataset.originalLabel) { label.textContent = button.dataset.originalLabel; }
+        });
+    }
+    window.addEventListener("pageshow", resetExternalButtons);
+    document.addEventListener("submit", function (event) {
+        var form = event.target;
+        if (form && form.matches && form.matches("[data-external-login]")) {
+            var button = event.submitter || form.querySelector("button[type=submit]");
+            if (button) {
+                if (button.classList.contains("is-loading")) { event.preventDefault(); return; }
+                button.classList.add("is-loading");
+                button.setAttribute("aria-busy", "true");
+                var label = button.querySelector(".rn-google-label");
+                if (label && button.dataset.loadingLabel) {
+                    button.dataset.originalLabel = label.textContent;
+                    label.textContent = button.dataset.loadingLabel;
+                }
+                setTimeout(function () { button.disabled = true; }, 0);
+            }
+        }
+    }, true);
     document.addEventListener("submit", function (event) {
         var form = event.target;
         if (form && form.matches && form.matches("[data-search-form]")) {
@@ -279,7 +339,7 @@
             dialog.addEventListener("click", function (e) {
                 if (e.target === dialog) { dotNetRef.invokeMethodAsync("OnDialogCancelled"); }
             });
-            var focusTarget = dialog.querySelector("[data-autofocus], [autofocus], .rn-dialog-body input:not([type=hidden]), .rn-dialog-body select, .rn-dialog-body textarea, .rn-dialog-footer button.rn-btn-primary");
+            var focusTarget = dialog.querySelector("[data-autofocus], [autofocus], .rn-dialog-body input:not([type=hidden]), .rn-dialog-body .rn-select-trigger, .rn-dialog-body select, .rn-dialog-body textarea, .rn-dialog-footer button.rn-btn-primary");
             if (focusTarget) {
                 focusTarget.focus();
                 if (typeof focusTarget.select === "function" && focusTarget.type === "number") { focusTarget.select(); }
@@ -299,6 +359,23 @@
         setTheme: function (choice) { applyTheme(choice); },
         rememberSearch: rememberSearch,
         recentSearches: recentSearches,
-        settleCovers: settleCovers
+        settleCovers: settleCovers,
+        // The account button lives in the statically rendered layout; interactive pages update it in place.
+        setAccountAvatar: function (url, initials) {
+            document.querySelectorAll(".rn-avatar-button").forEach(function (button) {
+                var img = button.querySelector("img");
+                var label = button.querySelector(".rn-avatar-initials");
+                if (label) { label.textContent = initials || ""; }
+                if (!url) { if (img) { img.remove(); } return; }
+                if (!img) {
+                    img = document.createElement("img");
+                    img.alt = "";
+                    img.referrerPolicy = "no-referrer";
+                    button.appendChild(img);
+                }
+                img.hidden = false;
+                img.src = url;
+            });
+        }
     };
 })();

@@ -1,0 +1,6 @@
+@inherits LayoutComponentBase
+
+@* Distraction-free layout for the in-browser reader: no sidebar or top bar, just the book. *@
+<a class="rn-skip-link visually-hidden-focusable" href="#reader-main">Skip to the book</a>
+@Body
+<ToastHost @rendermode="AppRenderMode.Interactive" />

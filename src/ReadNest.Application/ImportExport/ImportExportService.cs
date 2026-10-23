@@ -92,7 +92,7 @@ public sealed class ImportExportService(
         await using var db = await dbFactory.CreateAsync(cancellationToken);
         var profile = await db.UserProfiles.AsNoTracking()
             .Where(p => p.UserId == userId)
-            .Select(p => new { p.Handle, p.DisplayName, p.Bio, p.ProfileImageUrl, p.PreferredLanguage, p.TimeZoneId, p.IsProfilePublic, p.IsLibraryPublic })
+            .Select(p => new { p.Handle, p.DisplayName, p.Bio, p.ProfileImageUrl, HasUploadedPhoto = p.PhotoKey != null, p.PreferredLanguage, p.TimeZoneId, p.IsProfilePublic, p.IsLibraryPublic })
             .FirstOrDefaultAsync(cancellationToken);
 
         var library = await db.UserBooks.AsNoTracking()

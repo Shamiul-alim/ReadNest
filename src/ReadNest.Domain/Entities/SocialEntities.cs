@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using ReadNest.Domain.Common;
+using ReadNest.Domain.Enums;
 using ReadNest.Domain.Exceptions;
 using ReadNest.Domain.ValueObjects;
 
@@ -39,9 +40,39 @@ public sealed partial class UserProfile
     /// <summary>Whether the reading list (statuses and ratings, never notes) is visible on the public profile.</summary>
     public bool IsLibraryPublic { get; private set; }
 
+    /// <summary>Storage key of the uploaded profile photo (never a path or a user-supplied name).</summary>
+    public string? PhotoKey { get; private set; }
+
+    /// <summary>Changes whenever the photo changes, so photo URLs can be cached safely.</summary>
+    public long PhotoVersion { get; private set; }
+
+    public ReaderTheme ReaderTheme { get; private set; } = ReaderTheme.Paper;
+
+    /// <summary>Reader text size as a percentage of the default (80-160).</summary>
+    public int ReaderFontScale { get; private set; } = 100;
+
+    /// <summary>Reader line height in hundredths (130 means 1.3).</summary>
+    public int ReaderLineHeight { get; private set; } = 160;
+
+    public ReaderWidth ReaderWidth { get; private set; } = ReaderWidth.Medium;
+
+    public ReaderFlow ReaderFlow { get; private set; } = ReaderFlow.Paginated;
+
     public DateTime CreatedAtUtc { get; private set; }
 
     public DateTime UpdatedAtUtc { get; private set; }
+
+    public const int MinReaderFontScale = 80;
+    public const int MaxReaderFontScale = 160;
+    public const int MinReaderLineHeight = 120;
+    public const int MaxReaderLineHeight = 220;
+
+    /// <summary>
+    /// The URL that shows this reader's photo: the uploaded photo (served through an endpoint that checks
+    /// visibility) or, for older profiles, an external image link.
+    /// </summary>
+    public static string? PhotoUrlFor(Guid userId, string? photoKey, long photoVersion, string? externalImageUrl) =>
+        photoKey is null ? externalImageUrl : $"api/v1/users/{userId:N}/photo?v={photoVersion}";
 
     public static bool IsValidHandle(string? handle) => handle is not null && HandleRegex().IsMatch(handle);
 
@@ -90,6 +121,43 @@ public sealed partial class UserProfile
 
         // A public reading list is shown on the public profile, so it cannot be public on its own.
         IsLibraryPublic = isProfilePublic && isLibraryPublic;
+        UpdatedAtUtc = nowUtc;
+    }
+
+    /// <summary>Points the profile at a newly stored photo and returns the key of the photo it replaces.</summary>
+    public string? SetPhoto(string photoKey, DateTime nowUtc)
+    {
+        var previous = PhotoKey;
+        PhotoKey = Guard.Required(photoKey, 200, "photoKey", "Photo");
+        ProfileImageUrl = null;
+        PhotoVersion = nowUtc.Ticks;
+        UpdatedAtUtc = nowUtc;
+        return previous;
+    }
+
+    /// <summary>Removes the photo (uploaded or linked) and returns the key of the stored photo, if any.</summary>
+    public string? RemovePhoto(DateTime nowUtc)
+    {
+        var previous = PhotoKey;
+        PhotoKey = null;
+        ProfileImageUrl = null;
+        PhotoVersion = nowUtc.Ticks;
+        UpdatedAtUtc = nowUtc;
+        return previous;
+    }
+
+    public void UpdateReaderPreferences(ReaderTheme theme, int fontScale, int lineHeight, ReaderWidth width, ReaderFlow flow, DateTime nowUtc)
+    {
+        if (!Enum.IsDefined(theme) || !Enum.IsDefined(width) || !Enum.IsDefined(flow))
+        {
+            throw new DomainException("Unknown reader setting.", "readerPreferences");
+        }
+
+        ReaderTheme = theme;
+        ReaderFontScale = Guard.Range(fontScale, MinReaderFontScale, MaxReaderFontScale, "fontScale", "Text size");
+        ReaderLineHeight = Guard.Range(lineHeight, MinReaderLineHeight, MaxReaderLineHeight, "lineHeight", "Line spacing");
+        ReaderWidth = width;
+        ReaderFlow = flow;
         UpdatedAtUtc = nowUtc;
     }
 

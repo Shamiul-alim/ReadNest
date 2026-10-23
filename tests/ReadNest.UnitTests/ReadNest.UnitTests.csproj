@@ -21,6 +21,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\ReadNest.IntegrationTests\Infrastructure\TestFiles.cs" Link="Infrastructure\TestFiles.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 </Project>

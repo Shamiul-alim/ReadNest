@@ -1,0 +1,19 @@
+@* A full-stage message in the reader (no file, missing file, unsupported file ...). *@
+<div class="rn-reader-message" role="status">
+    <span class="rn-reader-notice-icon"><Icon Name="@Icon" Size="28" /></span>
+    <h1>@Title</h1>
+    <p>@Text</p>
+    @if (Href is not null)
+    {
+        <a class="rn-btn rn-btn-primary" href="@Href" data-enhance-nav="@(ForceLoad ? "false" : null)">@Action</a>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Icon { get; set; } = "info";
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public string? Href { get; set; }
+    [Parameter] public string? Action { get; set; }
+    [Parameter] public bool ForceLoad { get; set; }
+}

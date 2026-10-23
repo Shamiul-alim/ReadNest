@@ -47,16 +47,12 @@ else
                 <Icon Name="search" />
                 <input class="rn-input" type="search" maxlength="200" aria-label="Search your notes" placeholder="Search your notes" style="min-height:44px; font-size:15px" @bind="_search" />
             </form>
-            <label class="rn-sort">
-                Book
-                <select class="rn-select" value="@(Entry?.ToString() ?? "")" @onchange="OnBookChanged">
-                    <option value="">All books</option>
-                    @foreach (var book in _withNotes)
-                    {
-                        <option value="@book.EntryId">@book.Title (@book.Count)</option>
-                    }
-                </select>
-            </label>
+            <div class="rn-sort" style="min-width:0">
+                <span id="notes-book-label">Book</span>
+                <AppSelect TValue="Guid?" Id="notes-book" Class="auto rn-notes-book" Size="sm" AriaLabelledBy="notes-book-label" Value="Entry" ValueChanged="OnBookChanged"
+                           Searchable="@(_withNotes.Count > 8)" SearchPlaceholder="Find a book"
+                           Options="@([SelectOption.Of<Guid?>(null, "All books"), .. _withNotes.Select(b => SelectOption.Of<Guid?>(b.EntryId, b.Title, hint: Formats.Count(b.Count, "note")))])" />
+            </div>
         </div>
         <div aria-label="Filter by note type" class="rn-chips">
             <a class="rn-filter" aria-pressed="@(TypeFilter is null ? "true" : "false")" href="@Link(type: "", keepType: false)">All</a>
@@ -222,10 +218,10 @@ else
             ["page"] = null,
         }));
 
-    private void OnBookChanged(ChangeEventArgs e) =>
+    private void OnBookChanged(Guid? entry) =>
         Navigation.NavigateTo(Navigation.GetUriWithQueryParameters("notes", new Dictionary<string, object?>
         {
-            ["entry"] = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null,
+            ["entry"] = entry,
             ["page"] = null,
         }));
 

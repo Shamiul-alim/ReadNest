@@ -7,6 +7,7 @@
 @inject ProfileService Profiles
 @inject ShelfService Shelves
 @inject IJSRuntime JS
+@inject Microsoft.AspNetCore.Authentication.IAuthenticationSchemeProvider Schemes
 
 <AppTitle Text="Settings" />
 
@@ -40,23 +41,14 @@
                         <DataAnnotationsValidator />
                         <div class="rn-field">
                             <label class="rn-label" for="pref-language">Preferred book language</label>
-                            <InputSelect id="pref-language" class="rn-select" @bind-Value="_prefs.PreferredLanguage">
-                                <option value="">Any language</option>
-                                @foreach (var language in SelectOptions.Languages)
-                                {
-                                    <option value="@language.Code">@language.Name</option>
-                                }
-                            </InputSelect>
+                            <AppSelect TValue="string" Id="pref-language" Value="@LanguageValue" ValueChanged="SetLanguage" ValueExpression="() => _prefs.PreferredLanguage"
+                                       Options="LanguageOptions" Searchable="true" SearchPlaceholder="Find a language" />
                             <span class="rn-hint">Used as the default language when you search the catalogue.</span>
                         </div>
                         <div class="rn-field">
                             <label class="rn-label" for="pref-tz">Time zone</label>
-                            <InputSelect id="pref-tz" class="rn-select" @bind-Value="_prefs.TimeZoneId">
-                                @foreach (var zone in Zones)
-                                {
-                                    <option value="@zone">@zone</option>
-                                }
-                            </InputSelect>
+                            <AppSelect TValue="string" Id="pref-tz" @bind-Value="_prefs.TimeZoneId" Searchable="true" SearchPlaceholder="Find a time zone"
+                                       Options="@(Zones.Select(z => SelectOption.Of(z, z.Replace('_', ' '), hint: z == _browserZone ? "This device" : null)).ToList())" />
                             <span class="rn-hint">
                                 Decides which day your reading counts toward, for streaks, goals and history.
                                 @if (_browserZone is not null && _browserZone != _prefs.TimeZoneId)
@@ -127,6 +119,10 @@
                     <div class="rn-actions">
                         <a class="rn-btn rn-btn-secondary paper" href="Account/Manage/ChangePassword" data-enhance-nav="false"><Icon Name="lock" />Change password</a>
                         <a class="rn-btn rn-btn-secondary paper" href="Account/Manage/TwoFactorAuthentication" data-enhance-nav="false"><Icon Name="check-circle" />Two-factor and passkeys</a>
+                        @if (_googleEnabled)
+                        {
+                            <a class="rn-btn rn-btn-secondary paper" href="Account/Manage/ExternalLogins" data-enhance-nav="false"><Icon Name="link" />Connected sign-ins</a>
+                        }
                         <a class="rn-btn rn-btn-secondary paper" href="import-export"><Icon Name="archive" />Export my data</a>
                         <form action="Account/Logout" method="post" style="margin:0">
                             <AntiforgeryToken />
@@ -146,22 +142,10 @@
 
             default:
                 <section aria-label="Profile" class="rn-card" style="gap:22px">
+                    <ProfilePhotoEditor UserId="_userId" Name="@_form.DisplayName" ImageUrl="@_profile.ProfileImageUrl"
+                                        HasPhoto="@(_profile.ProfileImageUrl is not null)" OnChanged="OnPhotoChanged" />
                     <EditForm Model="_form" OnValidSubmit="SaveProfileAsync" class="rn-form" style="gap:22px">
                         <DataAnnotationsValidator />
-                        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:16px 20px">
-                            <Avatar Name="@_form.DisplayName" ImageUrl="@_form.ProfileImageUrl" Size="lg" />
-                            <div class="rn-field" style="flex:1 1 260px">
-                                <label class="rn-label" for="set-photo">Profile photo link <span class="optional">(optional)</span></label>
-                                <div style="display:flex; gap:8px; align-items:center">
-                                    <InputText id="set-photo" class="rn-input" @bind-Value="_form.ProfileImageUrl" maxlength="1000" placeholder="https://…" />
-                                    @if (!string.IsNullOrEmpty(_form.ProfileImageUrl))
-                                    {
-                                        <button type="button" class="rn-btn rn-btn-ghost" @onclick="() => _form.ProfileImageUrl = null">Use initials</button>
-                                    }
-                                </div>
-                                <ValidationMessage For="() => _form.ProfileImageUrl" />
-                            </div>
-                        </div>
                         <div class="rn-field">
                             <label class="rn-label" for="set-name">Display name</label>
                             <InputText id="set-name" class="rn-input" @bind-Value="_form.DisplayName" maxlength="80" />
@@ -191,6 +175,12 @@
 </div>
 
 @code {
+    private static readonly IReadOnlyList<SelectOption<string>> LanguageOptions = SelectOptions.LanguageChoices("Any language");
+
+    private string LanguageValue => _prefs.PreferredLanguage ?? "";
+
+    private void SetLanguage(string? code) => _prefs.PreferredLanguage = string.IsNullOrEmpty(code) ? null : code;
+
     private static readonly (string Key, string Label)[] Tabs =
         [("profile", "Profile"), ("reading", "Reading"), ("privacy", "Privacy"), ("appearance", "Appearance"), ("account", "Account")];
 
@@ -214,6 +204,7 @@
     private string? _email;
     private string _theme = "system";
     private string? _error;
+    private bool _googleEnabled;
 
     private string Tab => Tabs.Any(t => t.Key == TabQuery) ? TabQuery! : "profile";
 
@@ -227,6 +218,7 @@
             _email = (await AuthState).User.Identity?.Name;
         }
 
+        _googleEnabled = await Schemes.GetSchemeAsync(ReadNest.Web.Configuration.GoogleAuthentication.Scheme) is not null;
         await RefreshAsync();
     }
 
@@ -276,8 +268,15 @@
 
     private async Task SaveProfileAsync()
     {
-        var request = new ProfileUpdateRequest(_form.DisplayName, _form.Handle, _form.Bio, string.IsNullOrWhiteSpace(_form.ProfileImageUrl) ? null : _form.ProfileImageUrl);
+        // The photo is managed by the photo editor; sending the current value back leaves it unchanged.
+        var request = new ProfileUpdateRequest(_form.DisplayName, _form.Handle, _form.Bio, _profile?.ProfileImageUrl);
         await RunAsync(async () => _profile = await Profiles.UpdateProfileAsync(_userId, request, ComponentToken), "Profile saved.");
+    }
+
+    private void OnPhotoChanged(ProfileDto profile)
+    {
+        _profile = profile;
+        _form.ProfileImageUrl = profile.ProfileImageUrl;
     }
 
     private async Task SavePreferencesAsync()

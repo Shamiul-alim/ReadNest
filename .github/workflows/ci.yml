@@ -50,6 +50,12 @@ jobs:
           --configuration Release --no-build
           --logger "trx;LogFileName=unit.trx" --results-directory TestResults
 
+      - name: Component tests
+        run: >
+          dotnet test tests/ReadNest.ComponentTests
+          --configuration Release --no-build
+          --logger "trx;LogFileName=component.trx" --results-directory TestResults
+
       # Integration tests start a real PostgreSQL container through Testcontainers,
       # using the Docker engine available on GitHub-hosted Ubuntu runners.
       - name: Integration tests

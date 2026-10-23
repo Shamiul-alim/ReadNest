@@ -16,6 +16,10 @@
         {
             <StatusBadge Status="Entry.Status" />
         }
+        @if (HasFile)
+        {
+            <a class="rn-file-flag" href="@("reader/" + Entry.Id)" title="Read your copy in ReadNest" aria-label="@("Read " + Entry.Title + " in ReadNest")"><Icon Name="book-open" Size="14" /></a>
+        }
     </div>
     <div class="rn-book-foot" style="padding-top:var(--space-2)">
         @if (Entry.Status is ReadingStatus.CurrentlyReading or ReadingStatus.Paused && Entry.ProgressPercent is { } percent)
@@ -35,6 +39,9 @@
 @code {
     [Parameter, EditorRequired] public LibraryEntryDto Entry { get; set; } = default!;
     [Parameter] public bool ShowStatus { get; set; } = true;
+
+    /// <summary>The entry has a PDF or EPUB attached that can be opened in the reader.</summary>
+    [Parameter] public bool HasFile { get; set; }
 
     private string Href => "books/" + Entry.BookId;
     private string? FirstAuthor => Entry.Authors.Count > 0 ? Entry.Authors[0] : null;

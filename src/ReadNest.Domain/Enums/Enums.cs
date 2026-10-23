@@ -53,6 +53,43 @@ public enum BookOrigin
     Manual = 1,
 }
 
+/// <summary>Formats ReadNest can render in its own reader.</summary>
+public enum ReadingFileFormat
+{
+    Pdf = 1,
+    Epub = 2,
+}
+
+/// <summary>Where a reading file came from.</summary>
+public enum ReadingFileSource
+{
+    /// <summary>Uploaded by the reader, who is responsible for having the right to use it.</summary>
+    Upload = 1,
+
+    /// <summary>Imported from Project Gutenberg (public domain in the United States).</summary>
+    ProjectGutenberg = 2,
+}
+
+public enum ReaderTheme
+{
+    Paper = 0,
+    Sepia = 1,
+    Night = 2,
+}
+
+public enum ReaderWidth
+{
+    Narrow = 0,
+    Medium = 1,
+    Wide = 2,
+}
+
+public enum ReaderFlow
+{
+    Paginated = 0,
+    Scrolled = 1,
+}
+
 public static class EnumDisplayExtensions
 {
     public static string ToDisplayName(this ReadingStatus status) => status switch
@@ -96,5 +133,35 @@ public static class EnumDisplayExtensions
         CatalogProvider.GoogleBooks => "Google Books",
         CatalogProvider.OpenLibrary => "Open Library",
         _ => provider.ToString(),
+    };
+
+    public static string ToDisplayName(this ReadingFileFormat format) => format switch
+    {
+        ReadingFileFormat.Pdf => "PDF",
+        ReadingFileFormat.Epub => "EPUB",
+        _ => format.ToString(),
+    };
+
+    public static string ToDisplayName(this ReaderTheme theme) => theme switch
+    {
+        ReaderTheme.Paper => "Paper",
+        ReaderTheme.Sepia => "Sepia",
+        ReaderTheme.Night => "Night",
+        _ => theme.ToString(),
+    };
+
+    public static string ToDisplayName(this ReaderWidth width) => width switch
+    {
+        ReaderWidth.Narrow => "Narrow",
+        ReaderWidth.Medium => "Medium",
+        ReaderWidth.Wide => "Wide",
+        _ => width.ToString(),
+    };
+
+    public static string ToDisplayName(this ReaderFlow flow) => flow switch
+    {
+        ReaderFlow.Paginated => "Page by page",
+        ReaderFlow.Scrolled => "Continuous scroll",
+        _ => flow.ToString(),
     };
 }

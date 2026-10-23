@@ -1,0 +1,55 @@
+@using Microsoft.AspNetCore.Identity
+@using ReadNest.Infrastructure.Identity
+@using ReadNest.Web.Configuration
+
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IWebHostEnvironment Environment
+
+@* "Continue with Google". Posts to the Identity external-login endpoint, which redirects to Google. When Google
+   is not configured the button is shown disabled with setup instructions in development, and hidden otherwise. *@
+@if (_available)
+{
+    <form action="Account/PerformExternalLogin" method="post" class="rn-google-form" data-external-login>
+        <AntiforgeryToken />
+        <input type="hidden" name="provider" value="@GoogleAuthentication.Scheme" />
+        <input type="hidden" name="ReturnUrl" value="@ReturnUrl" />
+        <button type="submit" class="rn-google-btn" data-loading-label="Connecting to Google…">
+            <GoogleMark />
+            <span class="rn-google-label">@Label</span>
+            <span class="rn-google-spinner" aria-hidden="true"></span>
+        </button>
+    </form>
+    <div class="rn-or" role="separator"><span>or use your email</span></div>
+}
+else if (Environment.IsDevelopment())
+{
+    <div class="rn-google-form">
+        <button type="button" class="rn-google-btn" disabled aria-describedby="google-setup-hint">
+            <GoogleMark />
+            <span class="rn-google-label">@Label</span>
+        </button>
+        <p id="google-setup-hint" class="rn-google-setup">
+            <Icon Name="info" Size="16" />
+            <span>
+                Google sign-in isn't configured on this machine. Set <code>Authentication:Google:ClientId</code> and
+                <code>Authentication:Google:ClientSecret</code> with <code>dotnet user-secrets</code>, then restart.
+                See “Google sign-in” in the README. (Only shown in development.)
+            </span>
+        </p>
+    </div>
+    <div class="rn-or" role="separator"><span>or use your email</span></div>
+}
+
+@code {
+    private bool _available;
+
+    [Parameter] public string Label { get; set; } = "Continue with Google";
+
+    [Parameter] public string? ReturnUrl { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _available = (await SignInManager.GetExternalAuthenticationSchemesAsync())
+            .Any(s => s.Name == GoogleAuthentication.Scheme);
+    }
+}

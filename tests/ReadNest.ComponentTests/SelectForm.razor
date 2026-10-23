@@ -1,0 +1,21 @@
+@using System.ComponentModel.DataAnnotations
+@* Test host: an AppSelect inside an EditForm with a required field. *@
+<EditForm Model="Model" OnValidSubmit="() => Submitted = true">
+    <DataAnnotationsValidator />
+    <AppSelect TValue="ReadingStatus?" Id="status" @bind-Value="Model.Status" Placeholder="Choose a status"
+               Options="SelectOption.ForNullableEnum<ReadingStatus>(s => s.ToDisplayName())" />
+    <ValidationMessage For="() => Model.Status" />
+    <button type="submit">Save</button>
+</EditForm>
+
+@code {
+    public FormModel Model { get; } = new();
+
+    public bool Submitted { get; private set; }
+
+    public sealed class FormModel
+    {
+        [Required(ErrorMessage = "Pick a status.")]
+        public ReadingStatus? Status { get; set; }
+    }
+}

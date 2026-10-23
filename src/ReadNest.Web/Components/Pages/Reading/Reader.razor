@@ -1,0 +1,732 @@
+@page "/reader/{EntryId:guid}"
+@attribute [Authorize]
+@layout ReaderLayout
+@rendermode AppRenderMode.Interactive
+@inherits ReadNestComponentBase
+@implements IAsyncDisposable
+@using ReadNest.Application.Library
+@using ReadNest.Application.Reading
+@using ReadNest.Application.Social
+@using ReadNest.Domain.Entities
+@inject LibraryService Library
+@inject ReadingFileService ReadingFiles
+@inject ProfileService Profiles
+@inject IJSRuntime JS
+@inject ILogger<Reader> Logger
+
+<AppTitle Text="@(_entry is null ? "Reader" : _entry.Title)" />
+
+<div class="rn-reader @("theme-" + _prefs.Theme.ToString().ToLowerInvariant()) @("width-" + _prefs.Width.ToString().ToLowerInvariant())" @ref="_shell">
+    <header class="rn-reader-bar">
+        <a class="rn-btn rn-btn-ghost rn-btn-icon" href="@BookHref" aria-label="Back to the book page"><Icon Name="arrow-left" /></a>
+        <div class="rn-reader-title">
+            <strong title="@_entry?.Title">@(_entry?.Title ?? "Loading…")</strong>
+            @if (_entry is not null)
+            {
+                <span>@string.Join(", ", _entry.Authors)@(_chapter is null ? null : " · " + _chapter)</span>
+            }
+        </div>
+        @if (_state == ReaderState.Ready)
+        {
+            <div class="rn-reader-tools">
+                @if (_file?.Format == ReadingFileFormat.Epub && _toc.Count > 0)
+                {
+                    <button type="button" class="rn-btn rn-btn-ghost rn-btn-icon" aria-label="Contents" aria-expanded="@(_tocOpen ? "true" : "false")" aria-controls="reader-toc" @onclick="ToggleToc"><Icon Name="toc" /></button>
+                }
+                <button type="button" class="rn-btn rn-btn-ghost rn-btn-icon" aria-label="Reading settings" aria-expanded="@(_settingsOpen ? "true" : "false")" aria-controls="reader-settings" @onclick="ToggleSettings"><Icon Name="type" /></button>
+                <button type="button" class="rn-btn rn-btn-ghost rn-btn-icon rn-hide-mobile" aria-label="@(_fullscreen ? "Exit full screen" : "Full screen")" @onclick="ToggleFullscreenAsync"><Icon Name="@(_fullscreen ? "minimize" : "maximize")" /></button>
+                <button type="button" class="rn-btn rn-btn-secondary rn-btn-sm" @onclick="OpenDone">Done</button>
+            </div>
+        }
+    </header>
+
+    <main id="reader-main" class="rn-reader-stage" tabindex="-1" aria-label="Book">
+        @if (_state == ReaderState.Ready && !_shown)
+        {
+            <div class="rn-reader-message overlay" role="status">
+                <span class="rn-spinner" aria-hidden="true"></span>
+                <span>@(_loadPercent is > 0 and < 100 ? $"Opening the book… {_loadPercent}%" : "Opening the book…")</span>
+            </div>
+        }
+        @switch (_state)
+        {
+            case ReaderState.Loading:
+                <div class="rn-reader-message" role="status">
+                    <span class="rn-spinner" aria-hidden="true"></span>
+                    <span>@(_loadPercent is > 0 and < 100 ? $"Opening the book… {_loadPercent}%" : "Opening the book…")</span>
+                </div>
+                break;
+            case ReaderState.NotFound:
+                <ReaderNotice Icon="book" Title="This book isn't in your library" Text="It may have been removed, or the link belongs to someone else's library." Href="library" Action="Go to your library" />
+                break;
+            case ReaderState.NoFile:
+                <ReaderNotice Icon="file" Title="No file to read yet" Text="Attach your own PDF or EPUB, or pick a free edition, from the book's page." Href="@BookHref" Action="Back to the book" />
+                break;
+            case ReaderState.Missing:
+                <ReaderNotice Icon="alert" Title="The file is missing" Text="ReadNest couldn't find the file for this book. Upload it again from the book's page; your progress is safe." Href="@BookHref" Action="Back to the book" />
+                break;
+            case ReaderState.Corrupt:
+                <ReaderNotice Icon="alert" Title="This file can't be opened" Text="It may be damaged or use features the reader doesn't support. Try replacing it with a fresh copy." Href="@BookHref" Action="Back to the book" />
+                break;
+            case ReaderState.Password:
+                <ReaderNotice Icon="lock" Title="This PDF is password-protected" Text="Protected PDFs can't be opened in ReadNest. Upload a copy without a password." Href="@BookHref" Action="Back to the book" />
+                break;
+            case ReaderState.Failed:
+                <ReaderNotice Icon="wifi-off" Title="The book didn't load" Text="Check your connection and try again." Href="@CurrentHref" Action="Try again" ForceLoad="true" />
+                break;
+        }
+        <div class="rn-reader-host @(_file?.Format == ReadingFileFormat.Pdf ? "pdf" : "epub")" @ref="_host" hidden="@(_state != ReaderState.Ready)"></div>
+        @if (_state == ReaderState.Ready)
+        {
+            <button type="button" class="rn-reader-turn prev" aria-label="Previous page" @onclick="PrevAsync"><Icon Name="chevron-left" /></button>
+            <button type="button" class="rn-reader-turn next" aria-label="Next page" @onclick="NextAsync"><Icon Name="chevron-right" /></button>
+        }
+    </main>
+
+    @if (_state == ReaderState.Ready)
+    {
+        <footer class="rn-reader-foot">
+            @if (_atEnd)
+            {
+                <div class="rn-reader-end" role="status">
+                    <span>You've reached the end.</span>
+                    @if (_entry?.Status != ReadingStatus.Read)
+                    {
+                        <button type="button" class="rn-btn rn-btn-primary rn-btn-sm" @onclick="() => _finishOpen = true"><Icon Name="check" />Mark as finished</button>
+                    }
+                </div>
+            }
+            <div class="rn-reader-progress">
+                <div class="rn-progress-track" aria-hidden="true"><span style="width:@(PercentText(_percent ?? 0))%"></span></div>
+                <span class="rn-reader-progress-text" aria-live="polite">@ProgressText</span>
+            </div>
+            @if (_file?.Format == ReadingFileFormat.Pdf)
+            {
+                <div class="rn-reader-pdf-tools">
+                    <label class="rn-reader-pageinput">
+                        <span class="visually-hidden">Page number</span>
+                        <input type="number" inputmode="numeric" min="1" max="@_pageCount" value="@_page" @onchange="OnPageInputAsync" />
+                        <span>of @_pageCount</span>
+                    </label>
+                    <button type="button" class="rn-btn rn-btn-ghost rn-btn-icon" aria-label="Zoom out" @onclick="() => ZoomAsync(-0.15)"><Icon Name="zoom-out" /></button>
+                    <span class="rn-reader-zoom" aria-live="polite">@(_zoom)%</span>
+                    <button type="button" class="rn-btn rn-btn-ghost rn-btn-icon" aria-label="Zoom in" @onclick="() => ZoomAsync(0.15)"><Icon Name="zoom-in" /></button>
+                    <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm" @onclick="FitWidthAsync"><Icon Name="fit-width" />Fit width</button>
+                </div>
+            }
+            @if (_file?.SourceNote is { } note)
+            {
+                <p class="rn-reader-source">
+                    @note
+                    @if (_file.SourceUrl is { } source)
+                    {
+                        <a href="@source" target="_blank" rel="noopener noreferrer">Source <Icon Name="external" Size="14" /></a>
+                    }
+                </p>
+            }
+            @if (_file?.Format == ReadingFileFormat.Epub && _entry?.TotalPages is null)
+            {
+                <p class="rn-reader-source">Add the book's page count on its page to have reading here count toward your progress.</p>
+            }
+        </footer>
+    }
+
+    @if (_tocOpen)
+    {
+        <nav id="reader-toc" class="rn-reader-panel left" aria-label="Contents">
+            <div class="rn-reader-panel-head">
+                <h2>Contents</h2>
+                <button type="button" class="rn-btn rn-btn-ghost rn-btn-icon" aria-label="Close contents" @onclick="ToggleToc"><Icon Name="x" /></button>
+            </div>
+            <ol class="rn-reader-toc">
+                @foreach (var item in _toc)
+                {
+                    <li style="padding-left:@(item.Level * 14)px">
+                        <button type="button" @onclick="() => GoToChapterAsync(item)">@item.Label</button>
+                    </li>
+                }
+            </ol>
+        </nav>
+    }
+
+    @if (_settingsOpen)
+    {
+        <section id="reader-settings" class="rn-reader-panel right" aria-label="Reading settings">
+            <div class="rn-reader-panel-head">
+                <h2>Reading settings</h2>
+                <button type="button" class="rn-btn rn-btn-ghost rn-btn-icon" aria-label="Close settings" @onclick="ToggleSettings"><Icon Name="x" /></button>
+            </div>
+            <div class="rn-field">
+                <span class="rn-label" id="reader-theme-label">Page colour</span>
+                <div role="radiogroup" aria-labelledby="reader-theme-label" class="rn-reader-themes">
+                    @foreach (var theme in Enum.GetValues<ReaderTheme>())
+                    {
+                        var value = theme;
+                        <button type="button" role="radio" aria-checked="@(_prefs.Theme == value ? "true" : "false")" class="@("swatch-" + value.ToString().ToLowerInvariant())" @onclick="() => SetPrefsAsync(_prefs with { Theme = value })">@value.ToDisplayName()</button>
+                    }
+                </div>
+            </div>
+            @if (_file?.Format == ReadingFileFormat.Epub)
+            {
+                <div class="rn-field">
+                    <span class="rn-label" id="reader-size-label">Text size</span>
+                    <div class="rn-reader-stepper" role="group" aria-labelledby="reader-size-label">
+                        <button type="button" class="rn-btn rn-btn-secondary rn-btn-icon" aria-label="Smaller text" disabled="@(_prefs.FontScale <= UserProfile.MinReaderFontScale)" @onclick="() => SetPrefsAsync(_prefs with { FontScale = Math.Max(UserProfile.MinReaderFontScale, _prefs.FontScale - 10) })"><Icon Name="minus" /></button>
+                        <span aria-live="polite">@_prefs.FontScale%</span>
+                        <button type="button" class="rn-btn rn-btn-secondary rn-btn-icon" aria-label="Larger text" disabled="@(_prefs.FontScale >= UserProfile.MaxReaderFontScale)" @onclick="() => SetPrefsAsync(_prefs with { FontScale = Math.Min(UserProfile.MaxReaderFontScale, _prefs.FontScale + 10) })"><Icon Name="plus" /></button>
+                    </div>
+                </div>
+                <div class="rn-field">
+                    <label class="rn-label" for="reader-line">Line spacing</label>
+                    <AppSelect TValue="int" Id="reader-line" Value="_prefs.LineHeight" ValueChanged="SetLineHeightAsync" Options="LineHeightOptions" />
+                </div>
+                <div class="rn-field">
+                    <label class="rn-label" for="reader-width">Text width</label>
+                    <AppSelect TValue="ReaderWidth" Id="reader-width" Value="_prefs.Width" ValueChanged="SetWidthAsync" Options="WidthOptions" />
+                </div>
+                <div class="rn-field">
+                    <label class="rn-label" for="reader-flow">Page turning</label>
+                    <AppSelect TValue="ReaderFlow" Id="reader-flow" Value="_prefs.Flow" ValueChanged="SetFlowAsync" Options="FlowOptions" />
+                </div>
+            }
+            <p class="rn-hint rn-mb-0">Saved to your account, so every device opens books the same way. Use ← and → to turn pages.</p>
+        </section>
+    }
+</div>
+
+<Modal Title="Done reading for now?" Open="_doneOpen" OpenChanged="v => _doneOpen = v">
+    <ChildContent>
+        @{
+            var minutes = SittingMinutes;
+            var bookPage = CurrentBookPage;
+        }
+        <p class="rn-mb-0" style="font-size:16px; line-height:1.6">
+            Your place is saved@(minutes > 0 ? $" and you read for about {Formats.Count(minutes, "minute")}" : null).
+            @if (bookPage is { } reachedPage && reachedPage > _baselinePage)
+            {
+                <span> That's page @_baselinePage to page @reachedPage of @(_entry?.TotalPages?.ToString(CultureInfo.InvariantCulture) ?? "the book").</span>
+            }
+        </p>
+        @if (bookPage is null && _file?.Format == ReadingFileFormat.Epub)
+        {
+            <p class="rn-subtle rn-mb-0">To add this to your reading log, first set the book's page count on its page.</p>
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="rn-btn rn-btn-secondary" @onclick="LeaveAsync">Just keep my place</button>
+        @if (CurrentBookPage is { } target && target > _baselinePage && _entry?.Status != ReadingStatus.Read)
+        {
+            <button type="button" class="rn-btn rn-btn-primary" data-autofocus disabled="@IsBusy" @onclick="SaveSessionAndLeaveAsync"><Icon Name="check" />Log this reading</button>
+        }
+    </Footer>
+</Modal>
+
+@if (_entry is not null && _userId != Guid.Empty)
+{
+    <FinishDialog @bind-Open="_finishOpen" UserId="_userId" EntryId="_entry.Id" Title="@_entry.Title" Author="@_entry.Authors.FirstOrDefault()"
+                  CoverUrl="@_entry.CoverUrl" Isbn="@_entry.Isbn13" CurrentStatus="_entry.Status" CurrentRating="_entry.Rating" OnSaved="OnFinishedAsync" />
+}
+
+@code {
+    private static readonly IReadOnlyList<SelectOption<int>> LineHeightOptions =
+    [
+        SelectOption.Of(130, "Compact"),
+        SelectOption.Of(145, "Snug"),
+        SelectOption.Of(160, "Comfortable"),
+        SelectOption.Of(180, "Relaxed"),
+        SelectOption.Of(200, "Airy"),
+    ];
+
+    private static readonly IReadOnlyList<SelectOption<ReaderWidth>> WidthOptions = SelectOption.ForEnum<ReaderWidth>(w => w.ToDisplayName());
+    private static readonly IReadOnlyList<SelectOption<ReaderFlow>> FlowOptions = SelectOption.ForEnum<ReaderFlow>(f => f.ToDisplayName());
+
+    private enum ReaderState
+    {
+        Loading,
+        Ready,
+        NotFound,
+        NoFile,
+        Missing,
+        Corrupt,
+        Password,
+        Failed,
+    }
+
+    [Parameter] public Guid EntryId { get; set; }
+
+    private ElementReference _shell;
+    private ElementReference _host;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<Reader>? _self;
+    private Guid _userId;
+    private LibraryEntryDetailsDto? _entry;
+    private ReadingFileDto? _file;
+    private ReaderPreferencesDto _prefs = ReaderPreferencesDto.Default;
+    private ReaderState _state = ReaderState.Loading;
+    private bool _opened;
+    private bool _shown;
+    private int? _loadPercent;
+    private List<TocItem> _toc = [];
+    private bool _tocOpen;
+    private bool _settingsOpen;
+    private bool _fullscreen;
+    private bool _doneOpen;
+    private bool _finishOpen;
+    private int _zoom = 100;
+
+    // Position reported by the reader.
+    private string? _location;
+    private decimal? _percent;
+    private int? _page;
+    private int? _pageCount;
+    private bool _atEnd;
+    private string? _chapter;
+
+    // Reading-session tracking: progress is recorded from these baselines.
+    private int _baselinePage;
+    private double _baselineSeconds;
+    private double _activeSeconds;
+
+    private readonly SemaphoreSlim _saveLock = new(1, 1);
+    private Timer? _saveTimer;
+    private Timer? _prefsTimer;
+    private bool _positionDirty;
+    private bool _disposed;
+
+    private string BookHref => _entry is null ? "library" : "books/" + _entry.BookId;
+
+    private string CurrentHref => "reader/" + EntryId;
+
+    private int SittingMinutes => (int)Math.Floor(Math.Max(0, _activeSeconds - _baselineSeconds) / 60);
+
+    private int? CurrentBookPage => _file is null ? null : ReaderProgress.ToBookPage(_file.Format, _page, _pageCount, _percent, _entry?.TotalPages);
+
+    private string ProgressText
+    {
+        get
+        {
+            var percent = _percent is { } p ? $"{p:0}%" : null;
+            if (_file?.Format == ReadingFileFormat.Pdf && _page is { } page && _pageCount is { } count)
+            {
+                return $"Page {page} of {count}" + (percent is null ? "" : " · " + percent);
+            }
+
+            return percent is null ? "Calculating progress…" : percent + " through";
+        }
+    }
+
+    private static string PercentText(decimal value) => Math.Clamp(value, 0, 100).ToString("0.##", CultureInfo.InvariantCulture);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = await RequireUserIdAsync();
+        try
+        {
+            _entry = await Library.GetEntryAsync(_userId, EntryId, ComponentToken);
+        }
+        catch (NotFoundException)
+        {
+            _state = ReaderState.NotFound;
+            return;
+        }
+        catch (Exception ex) when (Describe(ex) is not null)
+        {
+            _state = ReaderState.Failed;
+            return;
+        }
+
+        _file = await ReadingFiles.GetAsync(_userId, EntryId, ComponentToken);
+        if (_file is null)
+        {
+            _state = ReaderState.NoFile;
+            return;
+        }
+
+        _prefs = await Profiles.GetReaderPreferencesAsync(_userId, ComponentToken);
+        _baselinePage = _entry.CurrentPage;
+        _location = _file.Position.Location;
+        _percent = _file.Position.Percent;
+        _page = _file.Position.Page;
+        _pageCount = _file.Position.PageCount;
+        await ReadingFiles.MarkOpenedAsync(_userId, EntryId, ComponentToken);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_opened || _file is null || _state != ReaderState.Loading || _disposed)
+        {
+            return;
+        }
+
+        _opened = true;
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/reader.js");
+            _self = DotNetObjectReference.Create(this);
+            _state = ReaderState.Ready;
+            StateHasChanged();
+            await _module.InvokeVoidAsync("open", _host, new
+            {
+                contentUrl = $"api/v1/library/{EntryId}/reading-file/content?v={_file.UploadedAtUtc.Ticks}",
+                format = _file.Format == ReadingFileFormat.Pdf ? "pdf" : "epub",
+                location = _file.Position.Location,
+                page = _file.Position.Page,
+                prefs = new { theme = _prefs.Theme.ToString(), fontScale = _prefs.FontScale, lineHeight = _prefs.LineHeight, flow = _prefs.Flow.ToString() },
+            }, _self);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "The reader could not start.");
+            _state = ReaderState.Failed;
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public Task OnLoading(int percent) => InvokeAsync(() =>
+    {
+        _loadPercent = percent;
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public Task OnReady(ReaderReadyInfo info) => InvokeAsync(() =>
+    {
+        _toc = info.Toc ?? [];
+        _pageCount = info.PageCount ?? _pageCount;
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public Task OnError(string code) => InvokeAsync(() =>
+    {
+        _state = code switch
+        {
+            "missing" => ReaderState.Missing,
+            "password" => ReaderState.Password,
+            "corrupt" => ReaderState.Corrupt,
+            "denied" => ReaderState.NotFound,
+            _ => ReaderState.Failed,
+        };
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public Task OnPosition(ReaderPositionInfo position) => InvokeAsync(() =>
+    {
+        _location = position.Location;
+        _percent = position.Percent ?? _percent;
+        _page = position.Page ?? _page;
+        _pageCount = position.PageCount ?? _pageCount;
+        _atEnd = position.AtEnd || (_page is { } p && _pageCount is { } c && p >= c);
+        _chapter = string.IsNullOrWhiteSpace(position.Chapter) ? _chapter : position.Chapter;
+        _activeSeconds = Math.Max(_activeSeconds, position.ActiveSeconds);
+        _positionDirty = true;
+        _shown = true;
+
+        // Debounced: at most one save every couple of seconds while turning pages.
+        _saveTimer ??= new Timer(_ =>
+        {
+            if (!_disposed)
+            {
+                _ = InvokeAsync(SavePositionAsync);
+            }
+        });
+        _saveTimer.Change(TimeSpan.FromSeconds(2.5), Timeout.InfiniteTimeSpan);
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public Task OnHeartbeat(double activeSeconds) => InvokeAsync(() => _activeSeconds = Math.Max(_activeSeconds, activeSeconds));
+
+    /// <summary>The tab was hidden (switched away, phone locked, closing): save now, while the circuit is alive.</summary>
+    [JSInvokable]
+    public Task OnHidden(double activeSeconds) => InvokeAsync(async () =>
+    {
+        _activeSeconds = Math.Max(_activeSeconds, activeSeconds);
+        await SavePositionAsync();
+        await CheckpointAsync(explicitRequest: false);
+    });
+
+    private async Task SavePositionAsync()
+    {
+        if (!_positionDirty || _file is null)
+        {
+            return;
+        }
+
+        await _saveLock.WaitAsync();
+        try
+        {
+            if (!_positionDirty)
+            {
+                return;
+            }
+
+            _positionDirty = false;
+            await ReadingFiles.SavePositionAsync(_userId, EntryId, new ReaderPositionRequest(_location, _percent, _page, _pageCount), CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is AppException or Domain.Exceptions.DomainException or InvalidOperationException or Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            // A rejected position (for example after the file was replaced in another tab) is not worth interrupting reading for.
+            Logger.LogInformation("Reader position not saved: {Reason}", ex.Message);
+        }
+        finally
+        {
+            _saveLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Records the reading done since the last checkpoint through the normal progress workflow (which creates a
+    /// reading session for the pages read). Automatic checkpoints only record plausible, forward reading of at
+    /// least a minute; they never change the status to Read.
+    /// </summary>
+    private async Task<bool> CheckpointAsync(bool explicitRequest)
+    {
+        if (_entry is null || _file is null || _entry.Status == ReadingStatus.Read || CurrentBookPage is not { } page)
+        {
+            return false;
+        }
+
+        var minutes = SittingMinutes;
+        var forward = page > _baselinePage;
+        var record = explicitRequest ? forward : ReaderProgress.IsPlausibleAutoSession(_baselinePage, page, minutes);
+        if (!record)
+        {
+            return false;
+        }
+
+        await _saveLock.WaitAsync();
+        try
+        {
+            var result = await Library.ApplyProgressAsync(
+                _userId,
+                EntryId,
+                new UpdateProgressRequest(page, RecordSession: true, DurationMinutes: Math.Min(minutes, ReadingSession.MaxDurationMinutes)),
+                CancellationToken.None);
+            _entry = result.Entry;
+            _baselinePage = result.Entry.CurrentPage;
+            _baselineSeconds = _activeSeconds;
+            return true;
+        }
+        catch (Exception ex) when (ex is AppException or Domain.Exceptions.DomainException)
+        {
+            Logger.LogInformation("Reading session not recorded: {Reason}", ex.Message);
+            return false;
+        }
+        finally
+        {
+            _saveLock.Release();
+        }
+    }
+
+    private async Task NextAsync() => await CallAsync("next");
+
+    private async Task PrevAsync() => await CallAsync("prev");
+
+    private async Task CallAsync(string method, params object?[] args)
+    {
+        if (_module is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _module.InvokeVoidAsync(method, [_host, .. args]);
+        }
+        catch (JSException)
+        {
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    private async Task OnPageInputAsync(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var page) && page >= 1)
+        {
+            await CallAsync("goToPage", Math.Min(page, _pageCount ?? page));
+        }
+    }
+
+    private async Task ZoomAsync(double delta)
+    {
+        if (_module is not null)
+        {
+            try
+            {
+                _zoom = await _module.InvokeAsync<int>("zoom", _host, delta);
+            }
+            catch (JSException)
+            {
+            }
+        }
+    }
+
+    private async Task FitWidthAsync()
+    {
+        if (_module is not null)
+        {
+            try
+            {
+                _zoom = await _module.InvokeAsync<int>("fitWidth", _host);
+            }
+            catch (JSException)
+            {
+            }
+        }
+    }
+
+    private async Task GoToChapterAsync(TocItem item)
+    {
+        if (item.Href is not null)
+        {
+            await CallAsync("goToHref", item.Href);
+        }
+
+        _tocOpen = false;
+    }
+
+    private void ToggleToc()
+    {
+        _tocOpen = !_tocOpen;
+        _settingsOpen = false;
+    }
+
+    private void ToggleSettings()
+    {
+        _settingsOpen = !_settingsOpen;
+        _tocOpen = false;
+    }
+
+    private async Task ToggleFullscreenAsync()
+    {
+        if (_module is not null)
+        {
+            try
+            {
+                _fullscreen = await _module.InvokeAsync<bool>("toggleFullscreen", _shell);
+            }
+            catch (JSException)
+            {
+            }
+        }
+    }
+
+    private Task SetLineHeightAsync(int value) => SetPrefsAsync(_prefs with { LineHeight = value });
+
+    private Task SetWidthAsync(ReaderWidth value) => SetPrefsAsync(_prefs with { Width = value });
+
+    private Task SetFlowAsync(ReaderFlow value) => SetPrefsAsync(_prefs with { Flow = value });
+
+    private async Task SetPrefsAsync(ReaderPreferencesDto prefs)
+    {
+        _prefs = prefs;
+        await CallAsync("setPrefs", new { theme = prefs.Theme.ToString(), fontScale = prefs.FontScale, lineHeight = prefs.LineHeight, flow = prefs.Flow.ToString() });
+
+        // Saved to the account shortly after the last change.
+        _prefsTimer ??= new Timer(_ =>
+        {
+            if (!_disposed)
+            {
+                _ = InvokeAsync(SavePrefsAsync);
+            }
+        });
+        _prefsTimer.Change(TimeSpan.FromSeconds(1), Timeout.InfiniteTimeSpan);
+    }
+
+    private async Task SavePrefsAsync()
+    {
+        try
+        {
+            _prefs = await Profiles.UpdateReaderPreferencesAsync(_userId, _prefs, CancellationToken.None);
+        }
+        catch (Exception ex) when (Describe(ex) is { } message)
+        {
+            Toasts.Error("Your reading settings weren't saved. " + message);
+        }
+    }
+
+    private void OpenDone() => _doneOpen = true;
+
+    private async Task SaveSessionAndLeaveAsync()
+    {
+        await SavePositionAsync();
+        var minutes = SittingMinutes;
+        if (await CheckpointAsync(explicitRequest: true))
+        {
+            Toasts.Success(minutes > 0 ? $"Logged {Formats.Count(minutes, "minute")} of reading." : "Progress saved.");
+        }
+
+        _doneOpen = false;
+        Navigation.NavigateTo(BookHref);
+    }
+
+    private async Task LeaveAsync()
+    {
+        await SavePositionAsync();
+
+        // "Keep my place" leaves the reading log alone; reset the baseline so leaving doesn't record it either.
+        _baselinePage = CurrentBookPage ?? _baselinePage;
+        _baselineSeconds = _activeSeconds;
+        _doneOpen = false;
+        Navigation.NavigateTo(BookHref);
+    }
+
+    private async Task OnFinishedAsync()
+    {
+        _entry = await Library.GetEntryAsync(_userId, EntryId, CancellationToken.None);
+        _baselinePage = _entry.CurrentPage;
+        _baselineSeconds = _activeSeconds;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _saveTimer?.Dispose();
+        _prefsTimer?.Dispose();
+        try
+        {
+            if (_module is not null)
+            {
+                _activeSeconds = Math.Max(_activeSeconds, await _module.InvokeAsync<double>("activeSeconds", _host));
+                await _module.InvokeVoidAsync("dispose", _host);
+                await _module.DisposeAsync();
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or TaskCanceledException or ObjectDisposedException)
+        {
+            // The browser may already be gone (tab closed); what .NET already knows is saved below.
+        }
+
+        try
+        {
+            await SavePositionAsync();
+            await CheckpointAsync(explicitRequest: false);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Saving reader progress on close failed.");
+        }
+
+        _self?.Dispose();
+        Dispose();
+    }
+
+    public sealed record TocItem(string Label, string? Href, int Level);
+
+    public sealed record ReaderReadyInfo(int? PageCount, List<TocItem>? Toc);
+
+    public sealed record ReaderPositionInfo(string? Location, decimal? Percent, int? Page, int? PageCount, bool AtEnd, string? Chapter, double ActiveSeconds);
+}

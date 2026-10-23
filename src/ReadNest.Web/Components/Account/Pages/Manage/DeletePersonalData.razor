@@ -8,6 +8,7 @@
 @inject SignInManager<ApplicationUser> SignInManager
 @inject IdentityRedirectManager RedirectManager
 @inject ILogger<DeletePersonalData> Logger
+@inject ReadNest.Application.Reading.ReadingFileService ReadingFiles
 
 <PageTitle>Delete Personal Data</PageTitle>
 
@@ -75,11 +76,15 @@
             return;
         }
 
+        // Uploaded files are not in the database; collect their keys before the account (and its rows) go.
+        var storedFiles = await ReadingFiles.GetStoredKeysAsync(user.Id, CancellationToken.None);
         var result = await UserManager.DeleteAsync(user);
         if (!result.Succeeded)
         {
             throw new InvalidOperationException("Unexpected error occurred deleting user.");
         }
+
+        await ReadingFiles.DeleteStoredFilesAsync(storedFiles);
 
         await SignInManager.SignOutAsync();
 

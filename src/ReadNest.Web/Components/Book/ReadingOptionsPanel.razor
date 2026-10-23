@@ -1,0 +1,414 @@
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Abstractions
+@using ReadNest.Application.Reading
+@inject ReadingFileService ReadingFiles
+@inject ReadingSourcesService Sources
+
+@* "Ways to read" on a book page: the reader's own PDF/EPUB (private), plus what Google Books, Open Library and
+   Project Gutenberg actually offer for this book. Nothing is shown as readable unless the provider says so. *@
+<section aria-labelledby="read-h" class="rn-section rn-read-options">
+    <div class="rn-section-head">
+        <h2 id="read-h" class="rn-mb-0">Ways to read</h2>
+    </div>
+
+    @if (EntryId is { } entryId)
+    {
+        <div class="rn-read-card">
+            @if (_fileLoading)
+            {
+                <LoadingIndicator Kind="inline" />
+            }
+            else if (_file is not null)
+            {
+                <div class="rn-read-file" hidden="@(_stage != UploadStage.Idle)">
+                    <span class="rn-read-format">@_file.Format.ToDisplayName()</span>
+                    <div class="rn-read-file-text">
+                        <strong title="@_file.FileName">@(_file.Source == ReadingFileSource.ProjectGutenberg ? "Project Gutenberg edition" : _file.FileName)</strong>
+                        <span>
+                            @UploadOptions.Describe(_file.SizeBytes) · added @Formats.Long(_file.UploadedAtUtc)
+                            @if (_file.Position.Percent is { } percent)
+                            {
+                                <text> · @(percent.ToString("0", CultureInfo.InvariantCulture))% read</text>
+                            }
+                        </span>
+                        <span class="rn-read-private"><Icon Name="lock" Size="14" />Only you can open this file.</span>
+                    </div>
+                </div>
+                <div class="rn-actions" hidden="@(_stage != UploadStage.Idle)">
+                    <a class="rn-btn rn-btn-primary" href="@("reader/" + entryId)"><Icon Name="book-open" />@(_file.Position.UpdatedAtUtc is null ? "Start reading" : "Continue reading")</a>
+                    <label class="rn-btn rn-btn-secondary paper rn-file-button">
+                        <Icon Name="upload" />Replace file
+                        <InputFile OnChange="OnFileSelected" accept=".pdf,.epub,application/pdf,application/epub+zip" aria-label="Replace the book file" />
+                    </label>
+                    <button type="button" class="rn-btn rn-btn-ghost" disabled="@IsBusy" @onclick="RemoveFileAsync"><Icon Name="trash" />Remove file</button>
+                </div>
+            }
+            else
+            {
+                <div class="rn-read-file" hidden="@(_stage != UploadStage.Idle)">
+                    <span class="rn-read-format muted"><Icon Name="file" /></span>
+                    <div class="rn-read-file-text">
+                        <strong>Read your own copy</strong>
+                        <span>Upload a PDF or EPUB you own (up to @UploadOptions.Describe(ReadingFiles.MaxBytes)). It stays private to your account, and your place is saved.</span>
+                    </div>
+                </div>
+                <div class="rn-actions" hidden="@(_stage != UploadStage.Idle)">
+                    <label class="rn-btn rn-btn-secondary paper rn-file-button">
+                        <Icon Name="upload" />Upload PDF or EPUB
+                        <InputFile OnChange="OnFileSelected" accept=".pdf,.epub,application/pdf,application/epub+zip" aria-label="Upload a PDF or EPUB of this book" />
+                    </label>
+                </div>
+            }
+            @* The chosen file is read through its <input>, so the cards above stay in the page (hidden) while uploading. *@
+            @if (_stage is UploadStage.Uploading or UploadStage.Checking)
+            {
+                <div class="rn-photo-progress" role="status">
+                    <span class="rn-spinner sm" aria-hidden="true"></span>
+                    <span>@(_stage == UploadStage.Uploading ? $"Uploading {_uploadName}… {_progress}%" : "Checking the file…")</span>
+                </div>
+                <div class="rn-progress-track" aria-hidden="true"><span style="width:@(_progress)%"></span></div>
+            }
+            @if (_uploadError is not null)
+            {
+                <span class="rn-error-text" role="alert"><Icon Name="alert" />@_uploadError</span>
+            }
+        </div>
+    }
+    else if (SignedIn)
+    {
+        <p class="rn-subtle rn-mb-0">Add this book to your library to attach your own PDF or EPUB and read it here.</p>
+    }
+
+    <div class="rn-read-sources" aria-live="polite">
+        @foreach (var provider in Providers)
+        {
+            var result = _results.GetValueOrDefault(provider);
+            if (result is null)
+            {
+                <div class="rn-read-source pending"><span class="rn-spinner sm" aria-hidden="true"></span><span>Checking @Name(provider)…</span></div>
+            }
+            else if (result.Unavailable)
+            {
+                <div class="rn-read-source muted">
+                    <span>@Name(provider) couldn't be checked right now.</span>
+                    @if (result.FallbackUrl is { } fallback)
+                    {
+                        <a href="@fallback" target="_blank" rel="noopener noreferrer">Search @Name(provider) <Icon Name="external" Size="14" /></a>
+                    }
+                </div>
+            }
+            else
+            {
+                foreach (var option in result.Options)
+                {
+                    <div class="rn-read-source">
+                        <span class="rn-read-badge @BadgeClass(option.Access)">@BadgeText(option.Access)</span>
+                        <div class="rn-read-source-text">
+                            <strong>@option.Label</strong>
+                            <span>@option.Description</span>
+                            @if (option.Notice is not null)
+                            {
+                                <span class="rn-read-notice">@option.Notice</span>
+                            }
+                        </div>
+                        <div class="rn-read-source-actions">
+                            @if (option.GutenbergId is { } gutenbergId && EntryId is not null && _file?.Source != ReadingFileSource.Upload)
+                            {
+                                <button type="button" class="rn-btn rn-btn-primary rn-btn-sm" disabled="@(IsBusy || _importing)" @onclick="() => ImportGutenbergAsync(gutenbergId)">
+                                    @if (_importing)
+                                    {
+                                        <span class="rn-spinner sm" aria-hidden="true"></span><span>Adding…</span>
+                                    }
+                                    else
+                                    {
+                                        <Icon Name="book-open" /><span>@(_file?.Source == ReadingFileSource.ProjectGutenberg ? "Re-download" : "Read in ReadNest")</span>
+                                    }
+                                </button>
+                            }
+                            @if (option.ReaderPath is { } path)
+                            {
+                                <a class="rn-btn rn-btn-secondary rn-btn-sm" href="@GoogleReaderHref(path, option.Access)" data-enhance-nav="false"><Icon Name="book-open" />@(option.Access == ReadingAccess.Preview ? "Read Preview" : "Read")</a>
+                            }
+                            @if (option.ExternalUrl is { } url)
+                            {
+                                <a class="rn-btn rn-btn-ghost rn-btn-sm" href="@url" target="_blank" rel="noopener noreferrer">@ExternalLabel(option)<Icon Name="external" Size="14" /></a>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        }
+        @if (AllChecked && !_results.Values.Any(r => r.Options.Count > 0) && !_results.Values.Any(r => r.Unavailable))
+        {
+            <p class="rn-subtle rn-mb-0">None of these services offer this book to read online. You can still track it with pages or chapters from your own copy.</p>
+        }
+    </div>
+    <p class="rn-hint rn-mb-0">ReadNest only lists what each service offers. Previews leave pages out; borrowing happens on Open Library.</p>
+</section>
+<ConfirmDialog @ref="_confirm" />
+
+@code {
+    private static readonly ReadingProvider[] Providers = [ReadingProvider.GoogleBooks, ReadingProvider.OpenLibrary, ReadingProvider.ProjectGutenberg];
+
+    private enum UploadStage
+    {
+        Idle,
+        Uploading,
+        Checking,
+    }
+
+    private readonly Dictionary<ReadingProvider, ReadingSourceResult> _results = [];
+    private readonly CancellationTokenSource _lookups = new();
+    private ConfirmDialog _confirm = default!;
+    private ReadingFileDto? _file;
+    private bool _fileLoading;
+    private UploadStage _stage;
+    private string? _uploadName;
+    private int _progress;
+    private string? _uploadError;
+    private bool _importing;
+    private Guid? _loadedFor;
+
+    [Parameter, EditorRequired] public Guid BookId { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public Guid? UserId { get; set; }
+    [Parameter] public Guid? EntryId { get; set; }
+
+    /// <summary>Raised after the attached file changes, so the page can refresh.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private bool SignedIn => UserId is not null;
+
+    private bool AllChecked => Providers.All(_results.ContainsKey);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor == EntryId && _results.Count > 0)
+        {
+            return;
+        }
+
+        var first = _loadedFor is null && _results.Count == 0;
+        _loadedFor = EntryId;
+        await LoadFileAsync();
+        if (first)
+        {
+            _ = LookUpSourcesAsync();
+        }
+    }
+
+    private async Task LoadFileAsync()
+    {
+        if (UserId is not { } userId || EntryId is not { } entryId)
+        {
+            _file = null;
+            return;
+        }
+
+        _fileLoading = true;
+        try
+        {
+            _file = await ReadingFiles.GetAsync(userId, entryId, ComponentToken);
+        }
+        catch (Exception ex) when (Describe(ex) is not null)
+        {
+            _file = null;
+        }
+        finally
+        {
+            _fileLoading = false;
+        }
+    }
+
+    private async Task LookUpSourcesAsync()
+    {
+        try
+        {
+            var token = _lookups.Token;
+            var book = await Sources.GetBookAsync(BookId, token);
+            await Task.WhenAll(
+                Track(Sources.GetGoogleAsync(book, token)),
+                Track(Sources.GetOpenLibraryAsync(book, token)),
+                Track(Sources.GetGutenbergAsync(book, token)));
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+        }
+        catch (Exception ex) when (Describe(ex) is not null)
+        {
+            foreach (var provider in Providers.Where(p => !_results.ContainsKey(p)))
+            {
+                _results[provider] = new ReadingSourceResult(provider, [], Unavailable: true);
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task Track(Task<ReadingSourceResult> lookup)
+    {
+        var result = await lookup;
+        await InvokeAsync(() =>
+        {
+            _results[result.Provider] = result;
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _uploadError = null;
+        if (UserId is not { } userId || EntryId is not { } entryId)
+        {
+            return;
+        }
+
+        var file = e.File;
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (extension is not (".pdf" or ".epub"))
+        {
+            _uploadError = "Choose a .pdf or .epub file.";
+            return;
+        }
+
+        if (file.Size == 0 || file.Size > ReadingFiles.MaxBytes)
+        {
+            _uploadError = $"That file is {UploadOptions.Describe(file.Size)}. The limit is {UploadOptions.Describe(ReadingFiles.MaxBytes)}.";
+            return;
+        }
+
+        if (_file is not null && !await _confirm.ConfirmAsync("Replace the file?", $"“{file.Name}” will replace the current file. Your saved place in the old file is cleared; your reading progress and sessions are kept.", "Replace file", danger: false))
+        {
+            return;
+        }
+
+        _stage = UploadStage.Uploading;
+        _uploadName = file.Name.Length > 40 ? file.Name[..37] + "…" : file.Name;
+        _progress = 0;
+        var size = file.Size;
+        var lastShown = -1;
+        try
+        {
+            await using var source = new ProgressStream(file.OpenReadStream(ReadingFiles.MaxBytes, ComponentToken), read =>
+            {
+                _progress = (int)Math.Min(100, read * 100 / Math.Max(1, size));
+                if (_progress == 100)
+                {
+                    _stage = UploadStage.Checking;
+                }
+
+                if (_progress / 2 != lastShown)
+                {
+                    lastShown = _progress / 2;
+                    _ = InvokeAsync(StateHasChanged);
+                }
+            });
+            _file = await ReadingFiles.UploadAsync(userId, entryId, source, file.Name, ComponentToken);
+            Toasts.Success(_file.Format.ToDisplayName() + " added. Open it any time from this page.");
+            await OnChanged.InvokeAsync();
+        }
+        catch (IOException)
+        {
+            _uploadError = "The upload was interrupted. Check your connection and try again.";
+        }
+        catch (Exception ex) when (Describe(ex) is { } message)
+        {
+            _uploadError = message;
+        }
+        finally
+        {
+            _stage = UploadStage.Idle;
+        }
+    }
+
+    private async Task RemoveFileAsync()
+    {
+        if (UserId is not { } userId || EntryId is not { } entryId)
+        {
+            return;
+        }
+
+        if (!await _confirm.ConfirmAsync("Remove the file?", "The file is deleted from ReadNest. Your reading progress, sessions and notes are kept.", "Remove file"))
+        {
+            return;
+        }
+
+        if (await RunAsync(() => ReadingFiles.RemoveAsync(userId, entryId, ComponentToken), "File removed."))
+        {
+            _file = null;
+            await OnChanged.InvokeAsync();
+        }
+    }
+
+    private async Task ImportGutenbergAsync(int gutenbergId)
+    {
+        if (UserId is not { } userId || EntryId is not { } entryId)
+        {
+            return;
+        }
+
+        _importing = true;
+        try
+        {
+            if (await RunAsync(async () => _file = await Sources.ImportGutenbergAsync(userId, entryId, gutenbergId, ComponentToken), "Project Gutenberg edition added."))
+            {
+                await OnChanged.InvokeAsync();
+                Navigation.NavigateTo("reader/" + entryId);
+            }
+        }
+        finally
+        {
+            _importing = false;
+        }
+    }
+
+    private string GoogleReaderHref(string path, ReadingAccess access) =>
+        Navigation.GetUriWithQueryParameters(Navigation.ToAbsoluteUri(path).AbsoluteUri, new Dictionary<string, object?>
+        {
+            ["book"] = BookId,
+            ["title"] = Title,
+            ["view"] = access == ReadingAccess.FullText ? "full" : "preview",
+        });
+
+    private static string Name(ReadingProvider provider) => provider switch
+    {
+        ReadingProvider.GoogleBooks => "Google Books",
+        ReadingProvider.OpenLibrary => "Open Library",
+        ReadingProvider.ProjectGutenberg => "Project Gutenberg",
+        _ => "your file",
+    };
+
+    private static string BadgeText(ReadingAccess access) => access switch
+    {
+        ReadingAccess.FullText => "Full text",
+        ReadingAccess.Preview => "Preview",
+        ReadingAccess.Borrow => "Borrow",
+        _ => "Elsewhere",
+    };
+
+    private static string BadgeClass(ReadingAccess access) => access switch
+    {
+        ReadingAccess.FullText => "full",
+        ReadingAccess.Preview => "preview",
+        ReadingAccess.Borrow => "borrow",
+        _ => "external",
+    };
+
+    private static string ExternalLabel(ReadingOptionDto option) => option.Provider switch
+    {
+        ReadingProvider.OpenLibrary when option.Access == ReadingAccess.Borrow => "Borrow on Open Library",
+        ReadingProvider.OpenLibrary => "Open Library",
+        ReadingProvider.ProjectGutenberg => "gutenberg.org",
+        _ => "Google Books",
+    };
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && !_lookups.IsCancellationRequested)
+        {
+            _lookups.Cancel();
+        }
+
+        base.Dispose(disposing);
+    }
+}

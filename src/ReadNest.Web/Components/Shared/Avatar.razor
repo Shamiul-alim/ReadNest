@@ -1,11 +1,10 @@
+@using System.Text.RegularExpressions
 <span class="rn-avatar @Size" aria-hidden="true">
+    <span class="rn-avatar-initials">@InitialsFor(Name)</span>
     @if (SafeUrl is not null)
     {
+        @* If the image fails to load (removed, private or offline), app.js hides it and the initials show through. *@
         <img src="@SafeUrl" alt="" referrerpolicy="no-referrer" loading="lazy" />
-    }
-    else
-    {
-        @InitialsFor(Name)
     }
 </span>
 
@@ -16,7 +15,14 @@
     /// <summary>"" (30px), "md" (48px), "lg" (80px) or "xl" (profile hero).</summary>
     [Parameter] public string? Size { get; set; }
 
-    private string? SafeUrl => InputSanitizer.SafeExternalUrl(ImageUrl);
+    private string? SafeUrl => SafeImageUrl(ImageUrl);
+
+    /// <summary>
+    /// The image URL to render: an uploaded photo served by ReadNest (relative, fixed shape) or a safe external
+    /// http(s) link. Anything else is dropped and the initials are shown.
+    /// </summary>
+    public static string? SafeImageUrl(string? url) =>
+        url is not null && OwnPhotoUrl().IsMatch(url) ? url : InputSanitizer.SafeExternalUrl(url);
 
     /// <summary>Up to two initials from a display name ("Elena Ferris" gives "EF").</summary>
     public static string InitialsFor(string? name)
@@ -29,4 +35,8 @@
             _ => (parts[0][..1] + parts[^1][..1]).ToUpperInvariant(),
         };
     }
+
+    private static Regex OwnPhotoUrl() => OwnPhotoRegex;
+
+    private static readonly Regex OwnPhotoRegex = new(@"^api/v1/users/[0-9a-f]{32}/photo\?v=[0-9]{1,20}$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
 }

@@ -47,6 +47,8 @@ public interface IReadNestDbContext : IAsyncDisposable
 
     DbSet<RecommendationDismissal> RecommendationDismissals { get; }
 
+    DbSet<ReadingFile> ReadingFiles { get; }
+
     DatabaseFacade Database { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

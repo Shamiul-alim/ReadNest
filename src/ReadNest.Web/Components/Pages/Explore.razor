@@ -235,6 +235,7 @@ else
     private Guid? _userId;
     private string _query = "";
     private CatalogSearchField _field;
+    private static readonly IReadOnlyList<SelectOption<string>> LanguageOptions = SelectOptions.LanguageChoices("Any language");
     private string _language = "";
     private string _source = "";
     private bool _loading;
@@ -302,24 +303,13 @@ else
         <details>
             <summary class="rn-subtle" style="cursor:pointer">More options</summary>
             <div style="display:flex; flex-wrap:wrap; gap:10px; padding-top:10px">
-                <label class="rn-sort">Language
-                    <select class="rn-select" @bind="_language">
-                        <option value="">Any language</option>
-                        @foreach (var language in SelectOptions.Languages)
-                        {
-                            <option value="@language.Code">@language.Name</option>
-                        }
-                    </select>
-                </label>
-                <label class="rn-sort">Source
-                    <select class="rn-select" @bind="_source">
-                        <option value="">Automatic</option>
-                        @foreach (var provider in Catalog.EnabledProviders)
-                        {
-                            <option value="@provider">@provider.ToDisplayName()</option>
-                        }
-                    </select>
-                </label>
+                <div class="rn-sort"><span id="explore-lang-label">Language</span>
+                    <AppSelect TValue="string" Class="auto" Size="sm" AriaLabelledBy="explore-lang-label" @bind-Value="_language" Options="LanguageOptions" />
+                </div>
+                <div class="rn-sort"><span id="explore-source-label">Source</span>
+                    <AppSelect TValue="string" Class="auto" Size="sm" AriaLabelledBy="explore-source-label" @bind-Value="_source"
+                               Options="@([SelectOption.Of("", "Automatic"), .. Catalog.EnabledProviders.Select(p => SelectOption.Of(p.ToString(), p.ToDisplayName()))])" />
+                </div>
             </div>
         </details>
     };

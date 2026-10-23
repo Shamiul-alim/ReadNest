@@ -65,7 +65,7 @@ public sealed class SocialService(IReadNestDbContextFactory dbFactory, UserClock
             profile.Handle,
             profile.DisplayName,
             profile.Bio,
-            profile.ProfileImageUrl,
+            UserProfile.PhotoUrlFor(profile.UserId, profile.PhotoKey, profile.PhotoVersion, profile.ProfileImageUrl),
             isOwn,
             isFollowing,
             followers,
@@ -142,7 +142,7 @@ public sealed class SocialService(IReadNestDbContextFactory dbFactory, UserClock
                 select new PersonDto(
                     p == null ? string.Empty : p.Handle,
                     p == null ? "Reader" : p.DisplayName,
-                    p == null ? null : p.ProfileImageUrl,
+                    p == null ? null : UserProfile.PhotoUrlFor(p.UserId, p.IsProfilePublic ? p.PhotoKey : null, p.PhotoVersion, p.ProfileImageUrl),
                     p != null && p.IsProfilePublic ? p.Bio : null,
                     p != null && p.IsProfilePublic))
             .Take(500)
@@ -161,7 +161,7 @@ public sealed class SocialService(IReadNestDbContextFactory dbFactory, UserClock
                 select new PersonDto(
                     p == null ? string.Empty : p.Handle,
                     p == null ? "Reader" : p.DisplayName,
-                    p == null ? null : p.ProfileImageUrl,
+                    p == null ? null : UserProfile.PhotoUrlFor(p.UserId, p.IsProfilePublic ? p.PhotoKey : null, p.PhotoVersion, p.ProfileImageUrl),
                     p != null && p.IsProfilePublic ? p.Bio : null,
                     p != null && p.IsProfilePublic))
             .Take(500)
@@ -187,7 +187,7 @@ public sealed class SocialService(IReadNestDbContextFactory dbFactory, UserClock
         return await people
             .OrderBy(p => p.DisplayName)
             .Take(30)
-            .Select(p => new PersonDto(p.Handle, p.DisplayName, p.ProfileImageUrl, p.Bio, true))
+            .Select(p => new PersonDto(p.Handle, p.DisplayName, UserProfile.PhotoUrlFor(p.UserId, p.PhotoKey, p.PhotoVersion, p.ProfileImageUrl), p.Bio, true))
             .ToListAsync(cancellationToken);
     }
 

@@ -16,6 +16,7 @@ internal sealed class UserProfileConfiguration : IEntityTypeConfiguration<UserPr
         builder.Property(p => p.ProfileImageUrl).HasMaxLength(1000);
         builder.Property(p => p.PreferredLanguage).HasMaxLength(3);
         builder.Property(p => p.TimeZoneId).HasMaxLength(64).IsRequired();
+        builder.Property(p => p.PhotoKey).HasMaxLength(200);
         builder.HasIndex(p => p.Handle).IsUnique();
         builder.HasOne<ApplicationUser>().WithOne().HasForeignKey<UserProfile>(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
     }

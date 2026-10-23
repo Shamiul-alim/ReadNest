@@ -10,6 +10,7 @@ public static class ApiEndpoints
         var api = app.MapGroup("/api/v1").RequireRateLimiting(RateLimitPolicies.Api);
 
         api.MapCatalogEndpoints();
+        api.MapProfilePhotoEndpoint();
 
         var personal = api.MapGroup(string.Empty)
             .RequireAuthorization(AuthPolicies.ApiUser)
@@ -17,6 +18,8 @@ public static class ApiEndpoints
         personal.MapLibraryEndpoints();
         personal.MapReadingEndpoints();
         personal.MapPersonalEndpoints();
+        personal.MapProfileEndpoints();
+        personal.MapReaderEndpoints();
         return app;
     }
 

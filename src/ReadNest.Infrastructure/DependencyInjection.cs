@@ -8,7 +8,9 @@ using ReadNest.Application.Abstractions;
 using ReadNest.Application.Books;
 using ReadNest.Application.Reviews;
 using ReadNest.Infrastructure.ExternalBooks;
+using ReadNest.Infrastructure.Imaging;
 using ReadNest.Infrastructure.Persistence;
+using ReadNest.Infrastructure.Storage;
 
 namespace ReadNest.Infrastructure;
 
@@ -57,6 +59,48 @@ public static class DependencyInjection
 
         services.AddTransient<IBookCatalogProvider>(sp => sp.GetRequiredService<GoogleBooksProvider>());
         services.AddTransient<IBookCatalogProvider>(sp => sp.GetRequiredService<OpenLibraryProvider>());
+
+        // Reading sources. Gutendex is slow (responses can take most of a minute), so it gets its own generous
+        // timeout; the result is cached by the application layer.
+        services.Configure<ReadingSourceOptions>(configuration.GetSection(ReadingSourceOptions.SectionName));
+        services.AddHttpClient(ReadingSourceProvider.GutendexClient, (sp, client) =>
+            {
+                client.BaseAddress = new Uri(sp.GetRequiredService<IOptions<ReadingSourceOptions>>().Value.GutendexBaseUrl);
+                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("ReadNest/1.0 (+https://github.com/readnest)");
+                client.Timeout = Timeout.InfiniteTimeSpan;
+            })
+            .AddStandardResilienceHandler(options =>
+            {
+                options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(75);
+                options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(80);
+                options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(160);
+                // Never retry: a slow catalogue should not be asked twice.
+                options.Retry.MaxRetryAttempts = 1;
+                options.Retry.ShouldHandle = _ => ValueTask.FromResult(false);
+            });
+
+        services.AddHttpClient(ReadingSourceProvider.GoogleViewApiClient, client =>
+            {
+                client.BaseAddress = new Uri("https://books.google.com/");
+                client.Timeout = TimeSpan.FromSeconds(30);
+            })
+            .AddStandardResilienceHandler(ConfigureResilience);
+
+        // Redirects are followed manually so every hop can be checked against the gutenberg.org allow-list.
+        services.AddHttpClient(ReadingSourceProvider.GutenbergDownloadClient, client =>
+            {
+                client.Timeout = TimeSpan.FromMinutes(3);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("ReadNest/1.0 (+https://github.com/readnest)");
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+        services.AddTransient<IReadingSourceProvider, ReadingSourceProvider>();
+
+        // Uploaded files (profile photos, reading files) live outside wwwroot and are served by checked endpoints.
+        services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.SectionName));
+        services.Configure<UploadOptions>(configuration.GetSection(UploadOptions.SectionName));
+        services.AddSingleton<IFileStore, LocalFileStore>();
+        services.AddSingleton<IImageProcessor, SkiaImageProcessor>();
 
         services.AddHealthChecks().AddDbContextCheck<ReadNestDbContext>("database", tags: ["ready"]);
         return services;

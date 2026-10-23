@@ -67,13 +67,8 @@
             </div>
             <div class="rn-field">
                 <label class="rn-label" for="mb-language">Language</label>
-                <InputSelect id="mb-language" class="rn-select" @bind-Value="_model.LanguageCode">
-                    <option value="">Not specified</option>
-                    @foreach (var language in SelectOptions.Languages)
-                    {
-                        <option value="@language.Code">@language.Name</option>
-                    }
-                </InputSelect>
+                <AppSelect TValue="string" Id="mb-language" Value="@LanguageValue" ValueChanged="SetLanguage" ValueExpression="() => _model.LanguageCode"
+                           Options="LanguageOptions" Searchable="true" SearchPlaceholder="Find a language" />
             </div>
         </div>
         <div class="rn-field">
@@ -92,12 +87,7 @@
         </div>
         <div class="rn-field" style="max-width:280px">
             <label class="rn-label" for="mb-status">Add to</label>
-            <InputSelect id="mb-status" class="rn-select" @bind-Value="_model.Status">
-                @foreach (var status in Enum.GetValues<ReadingStatus>())
-                {
-                    <option value="@status">@status.ToDisplayName()</option>
-                }
-            </InputSelect>
+            <AppSelect TValue="ReadingStatus" Id="mb-status" @bind-Value="_model.Status" Options="StatusOptions" />
         </div>
         <div class="rn-form-actions">
             <a class="rn-btn rn-btn-secondary" href="library">Cancel</a>
@@ -108,6 +98,13 @@
 </div>
 
 @code {
+    private static readonly IReadOnlyList<SelectOption<string>> LanguageOptions = SelectOptions.LanguageChoices("Not specified");
+
+    private string LanguageValue => _model.LanguageCode ?? "";
+
+    private void SetLanguage(string? code) => _model.LanguageCode = string.IsNullOrEmpty(code) ? null : code;
+    private static readonly IReadOnlyList<SelectOption<ReadingStatus>> StatusOptions = SelectOption.ForEnum<ReadingStatus>(s => s.ToDisplayName());
+
     private string _catalogQuery = "";
 
     private void SearchCatalog()

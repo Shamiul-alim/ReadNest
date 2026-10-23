@@ -134,3 +134,29 @@ internal sealed class CustomShelfBookConfiguration : IEntityTypeConfiguration<Cu
         builder.HasIndex(e => e.UserBookId);
     }
 }
+
+internal sealed class ReadingFileConfiguration : IEntityTypeConfiguration<ReadingFile>
+{
+    public void Configure(EntityTypeBuilder<ReadingFile> builder)
+    {
+        builder.ToTable("ReadingFiles", t =>
+        {
+            t.HasCheckConstraint("CK_ReadingFiles_Size", "\"SizeBytes\" > 0");
+            t.HasCheckConstraint("CK_ReadingFiles_Percent", "\"LastPercent\" IS NULL OR \"LastPercent\" BETWEEN 0 AND 100");
+            t.HasCheckConstraint("CK_ReadingFiles_Page", "\"LastPage\" IS NULL OR \"LastPage\" >= 1");
+        });
+        builder.HasKey(f => f.Id);
+        builder.Property(f => f.StorageKey).HasMaxLength(ReadingFile.StorageKeyMaxLength).IsRequired();
+        builder.Property(f => f.FileName).HasMaxLength(ReadingFile.FileNameMaxLength).IsRequired();
+        builder.Property(f => f.Sha256).HasMaxLength(64).IsFixedLength().IsRequired();
+        builder.Property(f => f.SourceUrl).HasMaxLength(ReadingFile.SourceUrlMaxLength);
+        builder.Property(f => f.SourceNote).HasMaxLength(ReadingFile.SourceNoteMaxLength);
+        builder.Property(f => f.LastLocation).HasMaxLength(ReadingFile.LocationMaxLength);
+        builder.Property(f => f.LastPercent).HasPrecision(5, 2);
+
+        // One reading file per library entry; the file row goes with the entry.
+        builder.HasIndex(f => f.UserBookId).IsUnique();
+        builder.HasIndex(f => f.StorageKey).IsUnique();
+        builder.HasOne(f => f.UserBook).WithOne().HasForeignKey<ReadingFile>(f => f.UserBookId).OnDelete(DeleteBehavior.Cascade);
+    }
+}

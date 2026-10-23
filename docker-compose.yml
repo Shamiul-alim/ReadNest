@@ -37,8 +37,15 @@ services:
       Https__Redirect: "false"
       Catalog__GoogleBooks__ApiKey: ${GOOGLE_BOOKS_API_KEY:-}
       Catalog__OpenLibrary__ContactEmail: ${OPEN_LIBRARY_CONTACT_EMAIL:-}
+      # Optional "Continue with Google"; leave unset to disable. Never commit real values.
+      Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
+      Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
     ports:
       - "${APP_PORT:-8080}:8080"
+    volumes:
+      # Profile photos and uploaded PDF/EPUB files. Back this volume up together with the database.
+      - readnest-files:/data
 
 volumes:
   readnest-db:
+  readnest-files:

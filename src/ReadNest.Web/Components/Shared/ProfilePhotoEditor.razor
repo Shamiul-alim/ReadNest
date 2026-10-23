@@ -1,0 +1,222 @@
+@inherits ReadNestComponentBase
+@using ReadNest.Application.Abstractions
+@using ReadNest.Application.Social
+@inject ProfilePhotoService Photos
+@inject IJSRuntime JS
+
+@* Upload, preview, replace and remove the profile photo. The browser only makes a small preview; the server
+   validates the real file (type by content, size, dimensions) and stores a re-encoded copy. *@
+<div class="rn-photo-editor" aria-busy="@(_stage is Stage.Uploading or Stage.Processing ? "true" : "false")">
+    <div class="rn-photo-preview">
+        @if (_previewUrl is not null)
+        {
+            <span class="rn-avatar lg"><img src="@_previewUrl" alt="" /></span>
+        }
+        else
+        {
+            <Avatar Name="@Name" ImageUrl="@ImageUrl" Size="lg" />
+        }
+    </div>
+    <div class="rn-photo-body">
+        <span class="rn-label" id="@(_id + "-label")">Profile photo</span>
+        @* The file input stays in the page while a chosen file is previewed and uploaded: Blazor reads the file
+           through that element, so removing it would break the upload. *@
+        <div class="rn-photo-idle" hidden="@(_stage != Stage.Idle)">
+            <span class="rn-hint">JPEG, PNG or WebP, up to @UploadOptions.Describe(Photos.MaxBytes). Your photo follows your profile's privacy setting.</span>
+            <div class="rn-photo-actions">
+                <label class="rn-btn rn-btn-secondary paper rn-btn-sm rn-file-button">
+                    <Icon Name="camera" />@(HasPhoto ? "Replace photo" : "Upload photo")
+                    <InputFile OnChange="OnFileSelected" accept="image/jpeg,image/png,image/webp" aria-labelledby="@(_id + "-label")" />
+                </label>
+                @if (HasPhoto)
+                {
+                    <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm" @onclick="RemoveAsync"><Icon Name="trash" />Remove</button>
+                }
+            </div>
+        </div>
+        @if (_stage == Stage.Selected)
+        {
+            <span class="rn-hint">Preview of <strong>@_fileName</strong> (@UploadOptions.Describe(_fileSize)). It will be cropped to a square.</span>
+            <div class="rn-photo-actions">
+                <button type="button" class="rn-btn rn-btn-primary rn-btn-sm" @onclick="SaveAsync"><Icon Name="check" />Save photo</button>
+                <button type="button" class="rn-btn rn-btn-ghost rn-btn-sm" @onclick="Cancel">Cancel</button>
+            </div>
+        }
+        else if (_stage is Stage.Uploading or Stage.Processing)
+        {
+            <div class="rn-photo-progress" role="status">
+                <span class="rn-spinner sm" aria-hidden="true"></span>
+                <span>@(_stage == Stage.Uploading ? $"Uploading… {_progress}%" : "Processing…")</span>
+            </div>
+            <div class="rn-progress-track" aria-hidden="true"><span style="width:@(_progress)%"></span></div>
+        }
+        @if (_error is not null)
+        {
+            <span class="rn-error-text" role="alert"><Icon Name="alert" />@_error</span>
+        }
+    </div>
+</div>
+<ConfirmDialog @ref="_confirm" />
+
+@code {
+    private static readonly string[] AllowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    private static readonly string[] AllowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
+
+    private enum Stage
+    {
+        Idle,
+        Selected,
+        Uploading,
+        Processing,
+    }
+
+    private readonly string _id = "photo-" + Guid.NewGuid().ToString("N")[..8];
+    private ConfirmDialog _confirm = default!;
+    private Stage _stage;
+    private IBrowserFile? _file;
+    private string? _fileName;
+    private long _fileSize;
+    private string? _previewUrl;
+    private int _progress;
+    private string? _error;
+
+    [Parameter, EditorRequired] public Guid UserId { get; set; }
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public string? ImageUrl { get; set; }
+    [Parameter] public bool HasPhoto { get; set; }
+    [Parameter] public EventCallback<ProfileDto> OnChanged { get; set; }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        var file = e.File;
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+
+        // Quick checks for a helpful message; the server checks the content itself.
+        if (!AllowedExtensions.Contains(extension) || !AllowedTypes.Contains(file.ContentType))
+        {
+            _error = "Choose a JPEG, PNG or WebP image. Other formats, including SVG and GIF, aren't supported.";
+            return;
+        }
+
+        if (file.Size == 0 || file.Size > Photos.MaxBytes)
+        {
+            _error = $"That image is {UploadOptions.Describe(file.Size)}. The limit is {UploadOptions.Describe(Photos.MaxBytes)}.";
+            return;
+        }
+
+        _file = file;
+        _fileName = file.Name.Length > 60 ? file.Name[..57] + "…" : file.Name;
+        _fileSize = file.Size;
+        _previewUrl = null;
+        _stage = Stage.Selected;
+        try
+        {
+            // A small browser-made preview, shown as a data: URL (never stored).
+            var preview = await file.RequestImageFileAsync("image/jpeg", 240, 240);
+            await using var stream = preview.OpenReadStream(2 * 1024 * 1024, ComponentToken);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer, ComponentToken);
+            _previewUrl = "data:image/jpeg;base64," + Convert.ToBase64String(buffer.ToArray());
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // No preview (for example an image the browser can't decode); the upload can still be tried.
+            _previewUrl = null;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_file is null)
+        {
+            return;
+        }
+
+        _error = null;
+        _stage = Stage.Uploading;
+        _progress = 0;
+        try
+        {
+            using var buffer = new MemoryStream((int)_fileSize);
+            await using (var source = _file.OpenReadStream(Photos.MaxBytes, ComponentToken))
+            {
+                var chunk = new byte[32 * 1024];
+                int read;
+                var lastShown = -1;
+                while ((read = await source.ReadAsync(chunk, ComponentToken)) > 0)
+                {
+                    buffer.Write(chunk, 0, read);
+                    _progress = (int)Math.Min(100, buffer.Length * 100 / Math.Max(1, _fileSize));
+                    if (_progress / 5 != lastShown)
+                    {
+                        lastShown = _progress / 5;
+                        StateHasChanged();
+                    }
+                }
+            }
+
+            _stage = Stage.Processing;
+            StateHasChanged();
+            buffer.Position = 0;
+            var profile = await Photos.UploadAsync(UserId, buffer, ComponentToken);
+            Reset();
+            Toasts.Success("Profile photo updated.");
+            await PublishAsync(profile);
+        }
+        catch (IOException)
+        {
+            _stage = Stage.Selected;
+            _error = "The upload was interrupted. Check your connection and try again.";
+        }
+        catch (Exception ex) when (Describe(ex) is { } message)
+        {
+            _stage = Stage.Selected;
+            _error = message;
+        }
+    }
+
+    private async Task RemoveAsync()
+    {
+        if (!await _confirm.ConfirmAsync("Remove your photo?", "Your initials will be shown instead. You can upload a new photo at any time.", "Remove photo"))
+        {
+            return;
+        }
+
+        ProfileDto? profile = null;
+        if (await RunAsync(async () => profile = await Photos.RemoveAsync(UserId, ComponentToken), "Photo removed.") && profile is not null)
+        {
+            await PublishAsync(profile);
+        }
+    }
+
+    private void Cancel()
+    {
+        Reset();
+        _error = null;
+    }
+
+    private void Reset()
+    {
+        _stage = Stage.Idle;
+        _file = null;
+        _previewUrl = null;
+        _progress = 0;
+    }
+
+    private async Task PublishAsync(ProfileDto profile)
+    {
+        await OnChanged.InvokeAsync(profile);
+        try
+        {
+            // The navigation bar is rendered outside this interactive page; update its avatar in place.
+            await JS.InvokeVoidAsync("readnest.setAccountAvatar", Avatar.SafeImageUrl(profile.ProfileImageUrl), Avatar.InitialsFor(profile.DisplayName));
+        }
+        catch (JSException)
+        {
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+}

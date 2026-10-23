@@ -133,16 +133,11 @@ else if (_book is not null)
                                     break;
                             }
                             <div class="rn-status-panel-foot">
-                                <label style="display:flex; align-items:center; gap:10px; font-size:14px; font-weight:600">
-                                    Status
-                                    <select class="rn-select" value="@_entry.Status" disabled="@IsBusy" @onchange="OnStatusSelectedAsync" @key="_statusKey">
-                                        @foreach (var status in Enum.GetValues<ReadingStatus>())
-                                        {
-                                            <option value="@status">@status.ToDisplayName()</option>
-                                        }
-                                        <option value="remove">Remove from library…</option>
-                                    </select>
-                                </label>
+                                <div style="display:flex; align-items:center; gap:10px; font-size:14px; font-weight:600">
+                                    <span id="status-select-label">Status</span>
+                                    <AppSelect TValue="string" Class="auto rn-status-select" Size="sm" AriaLabelledBy="status-select-label" Disabled="@IsBusy"
+                                               Value="@_entry.Status.ToString()" ValueChanged="OnStatusPickedAsync" Options="StatusOptions" @key="_statusKey" />
+                                </div>
                                 <button type="button" class="rn-btn rn-btn-ghost" @onclick="() => _shelvesOpen = true"><Icon Name="layers" />Add to shelf</button>
                                 <button type="button" class="rn-btn rn-btn-ghost" @onclick="() => OpenNewNote(NoteType.General)"><Icon Name="pen-line" />Add a note</button>
                                 <button type="button" class="rn-btn rn-btn-ghost muted" aria-pressed="@(_entry.IsFavorite ? "true" : "false")" disabled="@IsBusy" @onclick="ToggleFavoriteAsync">
@@ -151,6 +146,8 @@ else if (_book is not null)
                             </div>
                         }
                     </div>
+
+                    <ReadingOptionsPanel BookId="BookId" Title="@_book.Title" UserId="_userId" EntryId="_entry?.Id" />
 
                     <section aria-labelledby="about-h" class="rn-section rn-measure" style="gap:10px; margin-top:22px">
                         <h2 id="about-h" class="rn-mb-0">About this book</h2>
@@ -512,14 +509,19 @@ else if (_book is not null)
         }
     }
 
-    private async Task OnStatusSelectedAsync(ChangeEventArgs e)
+    private static readonly IReadOnlyList<SelectOption<string>> StatusOptions =
+    [
+        .. Enum.GetValues<ReadingStatus>().Select(s => SelectOption.Of(s.ToString(), s.ToDisplayName())),
+        SelectOption.Of("remove", "Remove from library…"),
+    ];
+
+    private async Task OnStatusPickedAsync(string? value)
     {
         if (_entry is null || _userId is not { } userId)
         {
             return;
         }
 
-        var value = e.Value?.ToString();
         if (value == "remove")
         {
             _statusKey++;

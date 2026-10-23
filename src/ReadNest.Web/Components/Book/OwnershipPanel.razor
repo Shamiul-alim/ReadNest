@@ -9,22 +9,11 @@
         <div class="rn-form-row">
             <div class="rn-field">
                 <label class="rn-label" for="own-status">Ownership</label>
-                <InputSelect id="own-status" class="rn-select" @bind-Value="_form.Ownership">
-                    @foreach (var value in Enum.GetValues<OwnershipStatus>())
-                    {
-                        <option value="@value">@value.ToDisplayName()</option>
-                    }
-                </InputSelect>
+                <AppSelect TValue="OwnershipStatus" Id="own-status" @bind-Value="_form.Ownership" Options="OwnershipOptions" />
             </div>
             <div class="rn-field">
                 <label class="rn-label" for="own-format">Format</label>
-                <InputSelect id="own-format" class="rn-select" @bind-Value="_form.Format">
-                    <option value="">Not specified</option>
-                    @foreach (var value in Enum.GetValues<BookFormat>())
-                    {
-                        <option value="@value">@value.ToDisplayName()</option>
-                    }
-                </InputSelect>
+                <AppSelect TValue="BookFormat?" Id="own-format" @bind-Value="_form.Format" Options="FormatOptions" />
             </div>
         </div>
         @if (_form.Ownership == OwnershipStatus.Owned)
@@ -108,6 +97,10 @@
 </Modal>
 
 @code {
+    private static readonly IReadOnlyList<SelectOption<OwnershipStatus>> OwnershipOptions = SelectOption.ForEnum<OwnershipStatus>(v => v.ToDisplayName());
+    private static readonly IReadOnlyList<SelectOption<BookFormat?>> FormatOptions =
+        [SelectOption.Of<BookFormat?>(null, "Not specified"), .. SelectOption.ForNullableEnum<BookFormat>(v => v.ToDisplayName())];
+
     [Parameter, EditorRequired] public Guid UserId { get; set; }
     [Parameter, EditorRequired] public LibraryEntryDetailsDto Entry { get; set; } = default!;
     [Parameter] public EventCallback OnChanged { get; set; }

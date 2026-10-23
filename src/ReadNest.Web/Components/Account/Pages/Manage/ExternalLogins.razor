@@ -9,57 +9,59 @@
 @inject IUserStore<ApplicationUser> UserStore
 @inject IdentityRedirectManager RedirectManager
 
-<PageTitle>Manage your external logins</PageTitle>
+<PageTitle>Connected sign-ins · ReadNest</PageTitle>
 
-<StatusMessage />
+<h3>Connected sign-ins</h3>
+<p class="rn-subtle">Sign in to ReadNest with another account instead of your password. Each sign-in can only be connected to one ReadNest account.</p>
+<StatusMessage Message="@ExternalMessage" />
 @if (currentLogins?.Count > 0)
 {
-    <h3>Registered Logins</h3>
-    <table class="table">
-        <tbody>
-            @foreach (var login in currentLogins)
-            {
-                <tr>
-                    <td>@login.ProviderDisplayName</td>
-                    <td>
-                        @if (showRemoveButton)
-                        {
-                            <form @formname="@($"remove-login-{login.LoginProvider}")" @onsubmit="OnSubmitAsync" method="post">
-                                <AntiforgeryToken />
-                                <div>
-                                    <input type="hidden" name="@nameof(LoginProvider)" value="@login.LoginProvider" />
-                                    <input type="hidden" name="@nameof(ProviderKey)" value="@login.ProviderKey" />
-                                    <button type="submit" class="btn btn-primary" title="Remove this @login.ProviderDisplayName login from your account">Remove</button>
-                                </div>
-                            </form>
-                        }
-                        else
-                        {
-                            @: &nbsp;
-                        }
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    <ul class="rn-login-list">
+        @foreach (var login in currentLogins)
+        {
+            <li>
+                @if (login.LoginProvider == ReadNest.Web.Configuration.GoogleAuthentication.Scheme)
+                {
+                    <GoogleMark />
+                }
+                <span class="rn-login-name">@login.ProviderDisplayName <span class="rn-subtle">· connected</span></span>
+                @if (showRemoveButton)
+                {
+                    <form @formname="@($"remove-login-{login.LoginProvider}")" @onsubmit="OnSubmitAsync" method="post">
+                        <AntiforgeryToken />
+                        <input type="hidden" name="@nameof(LoginProvider)" value="@login.LoginProvider" />
+                        <input type="hidden" name="@nameof(ProviderKey)" value="@login.ProviderKey" />
+                        <button type="submit" class="rn-btn rn-btn-secondary rn-btn-sm">Disconnect</button>
+                    </form>
+                }
+                else
+                {
+                    <span class="rn-hint">Set a password before disconnecting your only sign-in.</span>
+                }
+            </li>
+        }
+    </ul>
 }
 @if (otherLogins?.Count > 0)
 {
-    <h4>Add another service to log in.</h4>
-    <hr />
-    <form class="form-horizontal" action="Account/Manage/LinkExternalLogin" method="post">
+    <form action="Account/Manage/LinkExternalLogin" method="post" class="rn-google-form" data-external-login>
         <AntiforgeryToken />
-        <div>
-            <p>
-                @foreach (var provider in otherLogins)
+        @foreach (var provider in otherLogins)
+        {
+            <button type="submit" class="rn-google-btn" name="Provider" value="@provider.Name" data-loading-label="Connecting…">
+                @if (provider.Name == ReadNest.Web.Configuration.GoogleAuthentication.Scheme)
                 {
-                    <button type="submit" class="btn btn-primary" name="Provider" value="@provider.Name" title="Log in using your @provider.DisplayName account">
-                        @provider.DisplayName
-                    </button>
+                    <GoogleMark />
                 }
-            </p>
-        </div>
+                <span class="rn-google-label">Connect @provider.DisplayName</span>
+                <span class="rn-google-spinner" aria-hidden="true"></span>
+            </button>
+        }
     </form>
+}
+else if (currentLogins?.Count == 0)
+{
+    <p class="rn-subtle">No sign-in providers are configured on this server.</p>
 }
 
 @code {
@@ -81,6 +83,16 @@
 
     [SupplyParameterFromQuery]
     private string? Action { get; set; }
+
+    [SupplyParameterFromQuery(Name = "external")]
+    private string? External { get; set; }
+
+    private string? ExternalMessage => External switch
+    {
+        "cancelled" => "Error: Connecting was cancelled. Nothing was changed.",
+        "failed" => "Error: We couldn't connect that account. Please try again.",
+        _ => null,
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -121,12 +133,12 @@
         var result = await UserManager.RemoveLoginAsync(user, LoginProvider!, ProviderKey!);
         if (!result.Succeeded)
         {
-            RedirectManager.RedirectToCurrentPageWithStatus("Error: The external login was not removed.", HttpContext);
+            RedirectManager.RedirectToCurrentPageWithStatus("Error: That sign-in could not be disconnected.", HttpContext);
         }
         else
         {
             await SignInManager.RefreshSignInAsync(user);
-            RedirectManager.RedirectToCurrentPageWithStatus("The external login was removed.", HttpContext);
+            RedirectManager.RedirectToCurrentPageWithStatus("Disconnected.", HttpContext);
         }
     }
 
@@ -142,7 +154,7 @@
         var info = await SignInManager.GetExternalLoginInfoAsync(userId);
         if (info is null)
         {
-            RedirectManager.RedirectToCurrentPageWithStatus("Error: Could not load external login info.", HttpContext);
+            RedirectManager.RedirectToCurrentPageWithStatus("Error: The connection took too long or was cancelled. Please try again.", HttpContext);
             return;
         }
 
@@ -152,11 +164,11 @@
             // Clear the existing external cookie to ensure a clean login process
             await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
 
-            RedirectManager.RedirectToCurrentPageWithStatus("The external login was added.", HttpContext);
+            RedirectManager.RedirectToCurrentPageWithStatus("Connected. You can now sign in with it.", HttpContext);
         }
         else
         {
-            RedirectManager.RedirectToCurrentPageWithStatus("Error: The external login was not added. External logins can only be associated with one account.", HttpContext);
+            RedirectManager.RedirectToCurrentPageWithStatus("Error: That account is already connected to another ReadNest account, so it wasn't connected here.", HttpContext);
         }
     }
 }

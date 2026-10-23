@@ -20,13 +20,9 @@
                 {
                     <div class="rn-field" style="grid-column:1 / -1">
                         <label class="rn-label" for="@(_formId + "-book")">Book</label>
-                        <select id="@(_formId + "-book")" class="rn-select @(_attempted && _entry is null ? "invalid" : null)" @bind="_entry">
-                            <option value="">Choose a book…</option>
-                            @foreach (var book in Books)
-                            {
-                                <option value="@book.Id">@book.Title</option>
-                            }
-                        </select>
+                        <AppSelect TValue="Guid?" Id="@(_formId + "-book")" @bind-Value="_entry" Invalid="@(_attempted && _entry is null)"
+                                   Placeholder="Choose a book…" Searchable="@(Books.Count() > 8)" SearchPlaceholder="Find a book"
+                                   Options="@(Books.Select(b => SelectOption.Of<Guid?>(b.Id, b.Title)).ToList())" />
                     </div>
                 }
                 <div class="rn-field">

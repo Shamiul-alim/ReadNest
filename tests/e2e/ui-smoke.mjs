@@ -145,7 +145,9 @@ await step("add to a new shelf", async () => {
 });
 
 await step("mark as finished", async () => {
-    await page.locator(".rn-status-panel select").selectOption("Read");
+    // The status control is an AppSelect (combobox + listbox), not a native <select>.
+    await page.locator(".rn-status-panel .rn-select-trigger").click();
+    await page.getByRole("option", { name: "Read", exact: true }).click();
     await dialog().waitFor();
     await dialog().getByRole("button", { name: /Mark as read/ }).click();
     await toast("Marked as read").waitFor({ timeout: 15000 });
@@ -188,6 +190,48 @@ await step("library list view and bulk selection", async () => {
     await shot("28-library-bulk", false);
     await page.getByRole("button", { name: "Clear selection" }).click();
     await page.locator(".rn-bulkbar").waitFor({ state: "detached", timeout: 5000 });
+});
+
+await step("custom select: keyboard, dismissal and focus", async () => {
+    await page.goto(BASE + "/library");
+    const trigger = page.locator("#lib-sort");
+    await trigger.focus();
+    await page.keyboard.press("ArrowDown");
+    await page.locator(".rn-select-ctl.is-open [role=listbox]").waitFor({ timeout: 5000 });
+    if ((await trigger.getAttribute("aria-expanded")) !== "true") throw new Error("ArrowDown did not open the list");
+    const first = await trigger.getAttribute("aria-activedescendant");
+    await page.keyboard.press("ArrowDown");
+    if ((await trigger.getAttribute("aria-activedescendant")) === first) throw new Error("ArrowDown did not move the highlight");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    if ((await trigger.getAttribute("aria-expanded")) !== "false") throw new Error("Escape did not close the list");
+    if (!(await page.evaluate(() => document.activeElement && document.activeElement.id === "lib-sort"))) throw new Error("focus did not return to the trigger");
+    await page.keyboard.press("Enter");
+    await page.getByRole("option", { name: "Title" }).waitFor();
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await page.waitForURL(/sort=Rating/i, { timeout: 10000 });
+    await trigger.click();
+    await page.locator(".rn-select-ctl.is-open").waitFor();
+    await page.mouse.click(5, 5);
+    await page.waitForTimeout(200);
+    if ((await trigger.getAttribute("aria-expanded")) !== "false") throw new Error("clicking outside did not close the list");
+    await page.keyboard.press("Tab");
+});
+
+await step("custom select in dark theme and on a narrow screen", async () => {
+    await page.evaluate(() => window.readnest.setTheme("dark"));
+    await page.setViewportSize({ width: 360, height: 740 });
+    await page.goto(BASE + "/settings?tab=reading");
+    await page.locator("#pref-tz").click();
+    const popup = page.locator(".rn-select-ctl.is-open .rn-select-popup");
+    await popup.waitFor();
+    const box = await popup.boundingBox();
+    if (!box || box.x < 0 || box.x + box.width > 360 + 1 || box.y + box.height > 740 + 1) throw new Error("popup does not fit the viewport: " + JSON.stringify(box));
+    await shot("28b-select-dark-mobile", false);
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => window.readnest.setTheme("system"));
+    await page.setViewportSize({ width: 1366, height: 900 });
 });
 
 await step("set goal", async () => {
